@@ -1,0 +1,209 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: API Mailer for AWS SES 1.0.1\n"
+"Report-Msgid-Bugs-To: https://github.com/YOUR_ORG/api-mailer-for-aws-ses/issues\n"
+"POT-Creation-Date: 2025-09-12 00:00+0000\n"
+"PO-Revision-Date: 2025-09-12 00:00+0000\n"
+"Last-Translator: \n"
+"Language-Team: Danish\n"
+"Language: da_DK\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"X-Domain: api-mailer-for-aws-ses\n"
+
+#: ses-mailer.php
+msgid "Settings"
+msgstr "Indstillinger"
+
+#: src/Admin/AdminPage.php
+msgid "API Mailer for AWS SES"
+msgstr "WP API Mailer til AWS SES"
+
+#: src/Admin/AdminPage.php
+msgid "Amazon SES API Settings"
+msgstr "Amazon SES API indstillinger"
+
+#: src/Admin/AdminPage.php
+msgid "This plugin sends email via Amazon SES API. SMTP is not used."
+msgstr "Dette plugin sender e-mail via Amazon SES API. SMTP bruges ikke."
+
+#: src/Admin/AdminPage.php
+msgid "Enable Mailer (use SES API)"
+msgstr "Aktivér mailer (brug SES API)"
+
+#: src/Admin/AdminPage.php
+msgid "Access Key ID"
+msgstr "Adgangsnøgle-ID"
+
+#: src/Admin/AdminPage.php
+msgid "Your AWS Access Key ID"
+msgstr "Din AWS adgangsnøgle-ID"
+
+#: src/Admin/AdminPage.php
+msgid "Secret Access Key"
+msgstr "Hemmelig adgangsnøgle"
+
+#: src/Admin/AdminPage.php
+msgid "Region"
+msgstr "Region"
+
+#: src/Admin/AdminPage.php
+msgid "From Email (verified in SES)"
+msgstr "Fra e-mail (verificeret i SES)"
+
+#: src/Admin/AdminPage.php
+msgid "From Name"
+msgstr "Afsendernavn"
+
+#: src/Admin/AdminPage.php
+msgid "Reply-To Email"
+msgstr "Svar-til e-mail"
+
+#: src/Admin/AdminPage.php
+msgid "Force From on all emails"
+msgstr "Gennemtving afsender på alle e-mails"
+
+#: src/Admin/AdminPage.php
+msgid "Rate Limit (per second)"
+msgstr "Hastighedsgrænse (pr. sekund)"
+
+#: src/Admin/AdminPage.php
+msgid "Custom Headers (X-*, one per line)"
+msgstr "Brugerdefinerede headers (X-*, én pr. linje)"
+
+#: src/Admin/AdminPage.php
+msgid "Disable logging in production"
+msgstr "Deaktiver logning i produktion"
+
+#: src/Admin/AdminPage.php
+msgid "Send emails in background (queue)"
+msgstr "Send e-mails i baggrunden (kø)"
+
+#: src/Admin/AdminPage.php
+msgid "Clean up plugin data on deletion"
+msgstr "Ryd plugin-data ved sletning"
+
+#: src/Admin/AdminPage.php
+msgid "Read AWS credentials from wp-config"
+msgstr "Læs AWS legitimationsoplysninger fra wp-config"
+
+#: src/Admin/AdminPage.php
+msgid "Save Settings"
+msgstr "Gem indstillinger"
+
+#: src/Admin/AdminPage.php
+msgid "An error occurred while sending. See Logs."
+msgstr "Der opstod en fejl under afsendelse. Se Logs."
+
+#: src/Admin/AdminPage.php
+msgid "Failed to send test email:"
+msgstr "Kunne ikke sende test-e-mail:"
+
+#: src/Admin/AdminPage.php
+msgid "Test email queued. It will be sent in the background."
+msgstr "Test-e-mail sat i kø. Den sendes i baggrunden."
+
+#: src/Admin/AdminPage.php
+msgid "Test email sent!"
+msgstr "Test-e-mail sendt!"
+
+#: src/Admin/AdminPage.php
+msgid "Failed to send test email. Check Logs tab for details."
+msgstr "Kunne ikke sende test-e-mail. Se Logs-fanen for detaljer."
+
+#: src/Admin/AdminPage.php
+msgid "Send a test email to:"
+msgstr "Send en test-e-mail til:"
+
+#: src/Admin/AdminPage.php
+msgid "Send Test"
+msgstr "Send test"
+
+#: src/Admin/AdminPage.php
+msgid "Could not connect to SES. See Logs."
+msgstr "Kunne ikke forbinde til SES. Se Logs."
+
+#: src/Admin/AdminPage.php
+msgid "SES Connection Failed:"
+msgstr "SES-forbindelse mislykkedes:"
+
+#: src/Admin/AdminPage.php
+msgid "SES Connection Successful"
+msgstr "SES-forbindelse oprettet"
+
+#: src/Admin/AdminPage.php
+msgid "Configuration Status"
+msgstr "Konfigurationsstatus"
+
+#: src/Admin/AdminPage.php
+msgid "Access Key (wp-config/env)"
+msgstr "Adgangsnøgle (wp-config/env)"
+
+#: src/Admin/AdminPage.php
+msgid "Secret Key (wp-config/env)"
+msgstr "Hemmelig nøgle (wp-config/env)"
+
+#: src/Admin/AdminPage.php
+msgid "Region (wp-config/env)"
+msgstr "Region (wp-config/env)"
+
+#: src/Admin/AdminPage.php
+msgid "Access Key"
+msgstr "Adgangsnøgle"
+
+#: src/Admin/AdminPage.php
+msgid "Secret Key"
+msgstr "Hemmelig nøgle"
+
+#: src/Admin/AdminPage.php
+msgid "From Email"
+msgstr "Fra e-mail"
+
+#: src/Admin/AdminPage.php
+msgid "Background Sending"
+msgstr "Baggrundsafsendelse"
+
+#: src/Admin/AdminPage.php
+msgid "Logging is disabled"
+msgstr "Logning er deaktiveret"
+
+#: src/Admin/AdminPage.php
+msgid "Test SES Connection"
+msgstr "Test SES-forbindelse"
+
+#: src/Admin/AdminPage.php
+msgid "Max 24 Hour Send"
+msgstr "Maks. 24-timers afsendelser"
+
+#: src/Admin/AdminPage.php
+msgid "Max Send Rate (per sec)"
+msgstr "Maks. afsendelseshastighed (pr. sek.)"
+
+#: src/Admin/AdminPage.php
+msgid "Sent Last 24 Hours"
+msgstr "Sendt de sidste 24 timer"
+
+#: src/Logging/LogViewer.php
+msgid "Email Logs"
+msgstr "E-mail-logs"
+
+#: src/Logging/LogViewer.php
+msgid "Logging is disabled by settings. No new entries will be recorded."
+msgstr "Logning er deaktiveret i indstillingerne. Ingen nye poster gemmes."
+
+#: src/Logging/LogViewer.php
+msgid "Logs cleared."
+msgstr "Logs ryddet."
+
+#: src/Logging/LogViewer.php
+msgid "No log entries yet."
+msgstr "Ingen logposter endnu."
+
+#: src/Logging/LogViewer.php
+msgid "Log file not found."
+msgstr "Logfil ikke fundet."
+
+#: src/Logging/LogViewer.php
+msgid "Clear Logs"
+msgstr "Ryd logs"
