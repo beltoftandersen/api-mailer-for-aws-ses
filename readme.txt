@@ -1,5 +1,5 @@
 === API Mailer for AWS SES ===
-Contributors: christian198521, beltoftandersen
+Contributors: christian198521, Chimkins IT
 Tags: ses, email, aws, api, mailer
 Requires at least: 5.6
 Tested up to: 6.8
