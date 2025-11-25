@@ -122,6 +122,7 @@ class Queue {
             }
         }
         if ( function_exists('apply_filters') ) {
+            // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- core wp_mail_content_type filter
             $filtered = apply_filters('wp_mail_content_type', $content_type);
             if ( is_string($filtered) && stripos($filtered, 'text/html') !== false ) {
                 $content_type = 'text/html; charset=UTF-8';

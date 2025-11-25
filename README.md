@@ -5,7 +5,7 @@ optional background queueing.
 
 - Stable version: 1.1
 - Requires: WordPress 5.6+, PHP 7.4+
-- Author: BeltoftAndersen
+- Author: Chimkins IT
 - Text domain: api-mailer-for-aws-ses
 
 ## Overview
