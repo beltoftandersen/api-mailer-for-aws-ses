@@ -54,9 +54,9 @@ The plugin focuses on correctness, performance, and operational clarity:
 === Credentials in wp-config (recommended) ===
 Define the following constants above “That’s all, stop editing!” in `wp-config.php`, then enable “Read AWS credentials from wp-config” in the plugin settings.
 
-define('SES_MAILER_ACCESS_KEY', 'YOUR_ACCESS_KEY_ID');
-define('SES_MAILER_SECRET_KEY', 'YOUR_SECRET_ACCESS_KEY');
-define('SES_MAILER_REGION', 'us-east-1');
+    define('SES_MAILER_ACCESS_KEY', 'YOUR_ACCESS_KEY_ID');
+    define('SES_MAILER_SECRET_KEY', 'YOUR_SECRET_ACCESS_KEY');
+    define('SES_MAILER_REGION', 'us-east-1');
 
 When this mode is enabled, the Access Key, Secret, and Region fields are cleared, disabled, and ignored.
 
