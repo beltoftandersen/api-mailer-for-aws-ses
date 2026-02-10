@@ -5,6 +5,7 @@ if ( ! defined('ABSPATH') ) { exit; }
 use SesMailer\Support\Options;
 use SesMailer\Logging\LogViewer;
 use SesMailer\Api\SesClient;
+use SesMailer\Mail\Mailer;
 use WP_Error;
 
 class Queue {
@@ -110,7 +111,7 @@ class Queue {
         }
 
         $to_header   = implode(', ', $to);
-        $from_header = $from_name !== '' ? sprintf('"%s" <%s>', self::q($from_name), $from_email) : $from_email;
+        $from_header = $from_name !== '' ? sprintf('"%s" <%s>', Mailer::q($from_name), $from_email) : $from_email;
 
         // Determine content type similar to Mailer
         $content_type = 'text/plain; charset=UTF-8';
@@ -131,87 +132,32 @@ class Queue {
 
         $attachments = isset($loaded['attachments']) ? (array)$loaded['attachments'] : array();
         $has_attachments = ! empty($attachments);
-
-        $mime  = "";
-        $mime .= "From: {$from_header}\r\n";
-        $mime .= "To: {$to_header}\r\n";
-        $mime .= "Subject: " . self::qs($subject) . "\r\n";
-        $mime .= "MIME-Version: 1.0\r\n";
-
         $is_html = stripos($content_type, 'text/html') !== false;
-        $boundary_mixed = '=_SesMailer_m_' . md5(uniqid('', true));
-        $boundary_alt   = '=_SesMailer_a_' . md5(uniqid('', true));
-
-        if ( $has_attachments ) {
-            $mime .= "Content-Type: multipart/mixed; boundary=\"{$boundary_mixed}\"\r\n";
-        } elseif ( $is_html ) {
-            $mime .= "Content-Type: multipart/alternative; boundary=\"{$boundary_alt}\"\r\n";
-        } else {
-            $mime .= "Content-Type: text/plain; charset=UTF-8\r\n";
-        }
-        foreach ($sanitized as $h) { $mime .= $h . "\r\n"; }
-        $mime .= "\r\n";
-
-        $text_body = wp_strip_all_tags(str_replace(["<br>","<br/>","<br />"], "\n", $message));
-        $html_body = $is_html ? $message : '';
-
-        if ( $has_attachments ) {
-            if ( $is_html ) {
-                $mime .= "--{$boundary_mixed}\r\n";
-                $mime .= "Content-Type: multipart/alternative; boundary=\"{$boundary_alt}\"\r\n\r\n";
-                $mime .= "--{$boundary_alt}\r\n";
-                $mime .= "Content-Type: text/plain; charset=UTF-8\r\n";
-                $mime .= "Content-Transfer-Encoding: base64\r\n\r\n";
-                $mime .= chunk_split(base64_encode($text_body)) . "\r\n";
-                $mime .= "--{$boundary_alt}\r\n";
-                $mime .= "Content-Type: text/html; charset=UTF-8\r\n";
-                $mime .= "Content-Transfer-Encoding: base64\r\n\r\n";
-                $mime .= chunk_split(base64_encode($html_body)) . "\r\n";
-                $mime .= "--{$boundary_alt}--\r\n";
-            } else {
-                $mime .= "--{$boundary_mixed}\r\n";
-                $mime .= "Content-Type: text/plain; charset=UTF-8\r\n";
-                $mime .= "Content-Transfer-Encoding: base64\r\n\r\n";
-                $mime .= chunk_split(base64_encode($text_body)) . "\r\n";
-            }
-            foreach ($attachments as $path) {
-                $path = (string) $path;
-                if ( $path === '' || ! @is_readable($path) ) continue;
-                $filename = basename($path);
-                $ctype = function_exists('wp_check_filetype') ? (wp_check_filetype($filename)['type'] ?? '') : '';
-                if ( ! $ctype || $ctype === '' ) { $ctype = function_exists('mime_content_type') ? @mime_content_type($path) : ''; }
-                if ( ! $ctype || $ctype === '' ) { $ctype = 'application/octet-stream'; }
-                $data = @file_get_contents($path);
-                if ( $data === false ) continue;
-                $mime .= "--{$boundary_mixed}\r\n";
-                $mime .= "Content-Type: {$ctype}; name=\"{$filename}\"\r\n";
-                $mime .= "Content-Transfer-Encoding: base64\r\n";
-                $mime .= "Content-Disposition: attachment; filename=\"{$filename}\"\r\n\r\n";
-                $mime .= chunk_split(base64_encode($data)) . "\r\n";
-            }
-            $mime .= "--{$boundary_mixed}--\r\n";
-        } else {
-            if ( $is_html ) {
-                $mime .= "--{$boundary_alt}\r\n";
-                $mime .= "Content-Type: text/plain; charset=UTF-8\r\n";
-                $mime .= "Content-Transfer-Encoding: base64\r\n\r\n";
-                $mime .= chunk_split(base64_encode($text_body)) . "\r\n";
-                $mime .= "--{$boundary_alt}\r\n";
-                $mime .= "Content-Type: text/html; charset=UTF-8\r\n";
-                $mime .= "Content-Transfer-Encoding: base64\r\n\r\n";
-                $mime .= chunk_split(base64_encode($html_body)) . "\r\n";
-                $mime .= "--{$boundary_alt}--\r\n";
-            } else {
-                $mime .= $text_body;
-            }
-        }
 
         $rate = isset($opts['rate_limit']) ? max(0, intval($opts['rate_limit'])) : 10;
         if ( $rate > 0 ) { usleep(intval(1000000 / max(1, $rate))); }
 
-        $result = (new SesClient())->send_raw_email($mime);
+        $client = new SesClient();
+        $send_size = strlen($message);
+
+        if ( $has_attachments ) {
+            $mime = Mailer::build_raw_mime($from_header, $to_header, $subject, $message, $sanitized, $is_html, $attachments);
+            $send_size = strlen($mime);
+            $result = $client->send_raw_email($mime);
+        } else {
+            $text_body = Mailer::html_to_text($message);
+            $html_body = $is_html ? $message : '';
+            $reply_to = null;
+            foreach ($sanitized as $h) {
+                if ( stripos($h, 'reply-to:') === 0 ) {
+                    $reply_to = trim(substr($h, strlen('reply-to:')));
+                    break;
+                }
+            }
+            $result = $client->send_email($from_header, $to, $subject, $html_body, $text_body, $reply_to);
+        }
         if ( $result === true ) {
-            self::maybe_log(sprintf('SUCCESS%s to=%s subject="%s" bytes=%d attempt=%d', self::tag_str($tag), $to_header, mb_substr($subject, 0, 120), strlen($mime), $attempt));
+            self::maybe_log(sprintf('SUCCESS%s to=%s subject="%s" bytes=%d attempt=%d', self::tag_str($tag), $to_header, mb_substr($subject, 0, 120), $send_size, $attempt));
             if ( $job_id !== '' ) { self::delete_job($job_id); }
             return;
         }
@@ -277,12 +223,4 @@ class Queue {
         return ($tag !== '') ? ' tag=' . $tag : '';
     }
 
-    private static function q($text) {
-        if ($text === '' || preg_match('/^[\x20-\x7E]+$/', $text)) return $text;
-        return '=?UTF-8?B?' . base64_encode($text) . '?=';
-    }
-    private static function qs($subject) {
-        if ($subject === '' || preg_match('/^[\x20-\x7E]+$/', $subject)) return $subject;
-        return '=?UTF-8?B?' . base64_encode($subject) . '?=';
-    }
 }
