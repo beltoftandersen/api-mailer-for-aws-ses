@@ -33,8 +33,8 @@ The plugin focuses on correctness, performance, and operational clarity:
 9. Lightweight, minimal I/O, no Composer dependency.
 10. Uninstall cleanup toggle to remove settings and logs on deletion.
 
-=== Why It’s High Performance ===
-- Avoids SMTP/PHPMailer for the send path; uses compact MIME and SES API directly.
+=== Why It's High Performance ===
+- Avoids SMTP for the send path; uses PHPMailer only for MIME construction, then sends via SES API directly.
 - Background queue returns control to the request immediately when enabled.
 - Job payloads are stored server-side and referenced by a small `job_id` to avoid large serialized cron arguments.
 - Logging is optional and trimmed automatically to keep I/O low.
@@ -107,8 +107,9 @@ A: Yes. Use the wp-config constants and enable “Read AWS credentials from wp-c
 
 == Changelog ==
 = 1.2 =
-- Use SES SendEmail structured API for emails without attachments, eliminating duplicated MIME construction.
-- Extract shared `build_raw_mime()` for the attachment fallback path via SendRawEmail.
+- Use PHPMailer (bundled with WordPress) for MIME construction instead of manual MIME building; consistent with FluentSMTP and other major WP mailer plugins.
+- CC/BCC support via PHPMailer header parsing (previously silently dropped).
+- Remove dead `SendEmail` structured API code and manual MIME helpers.
 - Fix broken plain text generation in background queue (was using `wp_strip_all_tags` instead of `html_to_text`).
 = 1.1 =
 - Updated text domain to match plugin slug; aligned Action Scheduler group and translation assets.
