@@ -2,7 +2,7 @@
 Contributors: christian198521, Chimkins IT
 Tags: ses, email, aws, api, mailer
 Requires at least: 5.6
-Tested up to: 6.8
+Tested up to: 6.9
 Requires PHP: 7.4
 Stable tag: 1.3
 License: GPLv2 or later
