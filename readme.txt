@@ -4,7 +4,7 @@ Tags: ses, email, aws, api, mailer
 Requires at least: 5.6
 Tested up to: 6.8
 Requires PHP: 7.4
-Stable tag: 1.1
+Stable tag: 1.2
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -106,6 +106,10 @@ A: Yes. Use the wp-config constants and enable “Read AWS credentials from wp-c
 4. Logs tab with recent entries
 
 == Changelog ==
+= 1.2 =
+- Use SES SendEmail structured API for emails without attachments, eliminating duplicated MIME construction.
+- Extract shared `build_raw_mime()` for the attachment fallback path via SendRawEmail.
+- Fix broken plain text generation in background queue (was using `wp_strip_all_tags` instead of `html_to_text`).
 = 1.1 =
 - Updated text domain to match plugin slug; aligned Action Scheduler group and translation assets.
 - Documented AWS SES as an external service (data sent, endpoints, terms/privacy).
