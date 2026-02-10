@@ -4,7 +4,7 @@ Tags: ses, email, aws, api, mailer
 Requires at least: 5.6
 Tested up to: 6.8
 Requires PHP: 7.4
-Stable tag: 1.2
+Stable tag: 1.3
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -106,10 +106,12 @@ A: Yes. Use the wp-config constants and enable “Read AWS credentials from wp-c
 4. Logs tab with recent entries
 
 == Changelog ==
-= 1.2 =
+= 1.3 =
 - Use PHPMailer (bundled with WordPress) for MIME construction instead of manual MIME building; consistent with FluentSMTP and other major WP mailer plugins.
+- Auto-detect HTML content when plugins send HTML without explicit Content-Type header.
 - CC/BCC support via PHPMailer header parsing (previously silently dropped).
 - Remove dead `SendEmail` structured API code and manual MIME helpers.
+= 1.2 =
 - Fix broken plain text generation in background queue (was using `wp_strip_all_tags` instead of `html_to_text`).
 = 1.1 =
 - Updated text domain to match plugin slug; aligned Action Scheduler group and translation assets.
