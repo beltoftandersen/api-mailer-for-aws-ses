@@ -217,6 +217,17 @@ class Mailer {
             }
         }
 
+        // Auto-detect HTML content when Content-Type is not explicitly set.
+        // Some plugins (e.g., WooCommerce Follow Up Emails) send HTML without
+        // a Content-Type header or wp_mail_content_type filter, relying on
+        // WordPress's own detection in wp_mail() — which we bypass via pre_wp_mail.
+        if ( $content_type === 'text/plain' ) {
+            $trimmed = ltrim($message);
+            if ( stripos($trimmed, '<!doctype') === 0 || stripos($trimmed, '<html') === 0 ) {
+                $content_type = 'text/html';
+            }
+        }
+
         $is_html = ($content_type === 'text/html');
         if ( $is_html ) {
             $phpmailer->isHTML(true);
