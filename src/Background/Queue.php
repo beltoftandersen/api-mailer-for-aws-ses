@@ -81,23 +81,18 @@ class Queue {
         $subject = isset($loaded['subject']) ? (string) $loaded['subject'] : '';
         $message = isset($loaded['message']) ? (string) $loaded['message'] : '';
         $headers = isset($loaded['headers']) ? (array) $loaded['headers'] : array();
+        $attachments = isset($loaded['attachments']) ? (array) $loaded['attachments'] : array();
         $attempt = isset($loaded['attempt']) ? max(0, intval($loaded['attempt'])) : 0;
 
-        // Rebuild minimal sanitized headers and tag
-        $sanitized = array();
-        $count = 0; $tag = '';
+        // Extract tag for logging
+        $tag = '';
         foreach ($headers as $h) {
             $line = trim(str_replace(array("\r","\n"), '', (string)$h));
-            if ( $line === '' ) continue;
-            if ( preg_match('/^(from|to|subject|content-type)\s*:/i', $line) ) continue;
-            if ( stripos($line, 'x-') !== 0 && stripos($line, 'reply-to:') !== 0 ) continue;
-            if ( strlen($line) > 256 ) $line = substr($line, 0, 256);
             if ( stripos($line, 'x-ses-mailer-tag:') === 0 ) {
                 $tag = trim(substr($line, strlen('x-ses-mailer-tag:')));
                 $tag = preg_replace('/[^A-Za-z0-9._-]/', '', $tag);
+                break;
             }
-            $sanitized[] = $line;
-            $count++; if ( $count >= 10 ) break;
         }
 
         $from_email = isset($opts['from_email']) ? trim($opts['from_email']) : '';
@@ -110,34 +105,12 @@ class Queue {
             return;
         }
 
-        $to_header   = implode(', ', $to);
-        $from_header = $from_name !== '' ? sprintf('"%s" <%s>', Mailer::q($from_name), $from_email) : $from_email;
-
-        // Determine content type similar to Mailer
-        $content_type = 'text/plain; charset=UTF-8';
-        foreach ((array)$headers as $hline) {
-            $l = trim((string)$hline);
-            if ( stripos($l, 'content-type:') === 0 ) {
-                if ( stripos($l, 'text/html') !== false ) { $content_type = 'text/html; charset=UTF-8'; }
-                break;
-            }
-        }
-        if ( function_exists('apply_filters') ) {
-            // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- core wp_mail_content_type filter
-            $filtered = apply_filters('wp_mail_content_type', $content_type);
-            if ( is_string($filtered) && stripos($filtered, 'text/html') !== false ) {
-                $content_type = 'text/html; charset=UTF-8';
-            }
-        }
-
-        $attachments = isset($loaded['attachments']) ? (array)$loaded['attachments'] : array();
-        $has_attachments = ! empty($attachments);
-        $is_html = stripos($content_type, 'text/html') !== false;
+        $to_header = implode(', ', $to);
 
         $rate = isset($opts['rate_limit']) ? max(0, intval($opts['rate_limit'])) : 10;
         if ( $rate > 0 ) { usleep(intval(1000000 / max(1, $rate))); }
 
-        $mime = Mailer::build_raw_mime($from_header, $to_header, $subject, $message, $sanitized, $is_html, $attachments);
+        $mime = Mailer::build_mime($to, $subject, $message, $headers, $attachments, $from_email, $from_name);
         $send_size = strlen($mime);
         $result = (new SesClient())->send_raw_email($mime);
         if ( $result === true ) {
