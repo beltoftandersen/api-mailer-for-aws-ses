@@ -65,6 +65,44 @@ class SesClient {
         ));
     }
 
+    public function send_email($from, $to_addresses, $subject, $html_body, $text_body, $reply_to = null) {
+        if ( empty($this->access_key) || empty($this->secret_key) ) {
+            return new WP_Error('ses_creds_missing', 'SES credentials missing.');
+        }
+        if ( empty($this->endpoint) ) {
+            return new WP_Error('ses_region_invalid', 'SES region missing or invalid.');
+        }
+        $params = array(
+            'Action'                  => 'SendEmail',
+            'Version'                 => '2010-12-01',
+            'Source'                  => $from,
+            'Message.Subject.Data'    => $subject,
+            'Message.Subject.Charset' => 'UTF-8',
+        );
+        foreach ( array_values($to_addresses) as $i => $addr ) {
+            $params['Destination.ToAddresses.member.' . ($i + 1)] = $addr;
+        }
+        if ( $html_body !== '' ) {
+            $params['Message.Body.Html.Data']    = $html_body;
+            $params['Message.Body.Html.Charset'] = 'UTF-8';
+        }
+        if ( $text_body !== '' ) {
+            $params['Message.Body.Text.Data']    = $text_body;
+            $params['Message.Body.Text.Charset'] = 'UTF-8';
+        }
+        if ( $reply_to !== null && $reply_to !== '' ) {
+            $params['ReplyToAddresses.member.1'] = $reply_to;
+        }
+        $response = $this->request($params);
+        if ( is_wp_error($response) ) return $response;
+        $code = wp_remote_retrieve_response_code($response);
+        if ( $code === 200 ) return true;
+        return new WP_Error('ses_api_error', 'SES API error', array(
+            'status' => $code,
+            'body'   => wp_remote_retrieve_body($response),
+        ));
+    }
+
     public function get_send_quota() {
         if ( empty($this->access_key) || empty($this->secret_key) ) {
             return new WP_Error('ses_creds_missing', 'SES credentials missing.');

@@ -150,105 +150,43 @@ class Mailer {
         $to_header = implode(', ', $to);
         $subject   = (string) $atts['subject'];
         $message   = (string) $atts['message'];
-        $from_header = $from_name !== '' ? sprintf('"%s" <%s>', $this->q($from_name), $from_email) : $from_email;
+        $from_header = $from_name !== '' ? sprintf('"%s" <%s>', self::q($from_name), $from_email) : $from_email;
 
         $attachments = (array) $atts['attachments'];
         $has_attachments = ! empty($attachments);
-
-        $mime  = "";
-        $mime .= "From: {$from_header}\r\n";
-        $mime .= "To: {$to_header}\r\n";
-        $mime .= "Subject: " . $this->qs($subject) . "\r\n";
-        $mime .= "MIME-Version: 1.0\r\n";
-
         $is_html = stripos($content_type, 'text/html') !== false;
-        $boundary_mixed = '=_SesMailer_m_' . md5(uniqid('', true));
-        $boundary_alt   = '=_SesMailer_a_' . md5(uniqid('', true));
-
-        if ( $has_attachments ) {
-            $mime .= "Content-Type: multipart/mixed; boundary=\"{$boundary_mixed}\"\r\n";
-        } elseif ( $is_html ) {
-            $mime .= "Content-Type: multipart/alternative; boundary=\"{$boundary_alt}\"\r\n";
-        } else {
-            $mime .= "Content-Type: text/plain; charset=UTF-8\r\n";
-        }
-        foreach ($sanitized as $h) { $mime .= $h . "\r\n"; }
-        $mime .= "\r\n"; // end headers
-
-        $text_body = wp_strip_all_tags(str_replace(["<br>","<br/>","<br />"], "\n", $message));
-        $html_body = $is_html ? $message : '';
-
-        if ( $has_attachments ) {
-            if ( $is_html ) {
-                $mime .= "--{$boundary_mixed}\r\n";
-                $mime .= "Content-Type: multipart/alternative; boundary=\"{$boundary_alt}\"\r\n\r\n";
-                // Plain part
-                $mime .= "--{$boundary_alt}\r\n";
-                $mime .= "Content-Type: text/plain; charset=UTF-8\r\n";
-                $mime .= "Content-Transfer-Encoding: base64\r\n\r\n";
-                $mime .= chunk_split(base64_encode($text_body)) . "\r\n";
-                // HTML part
-                $mime .= "--{$boundary_alt}\r\n";
-                $mime .= "Content-Type: text/html; charset=UTF-8\r\n";
-                $mime .= "Content-Transfer-Encoding: base64\r\n\r\n";
-                $mime .= chunk_split(base64_encode($html_body)) . "\r\n";
-                $mime .= "--{$boundary_alt}--\r\n";
-            } else {
-                $mime .= "--{$boundary_mixed}\r\n";
-                $mime .= "Content-Type: text/plain; charset=UTF-8\r\n";
-                $mime .= "Content-Transfer-Encoding: base64\r\n\r\n";
-                $mime .= chunk_split(base64_encode($text_body)) . "\r\n";
-            }
-            // Attachments
-            foreach ($attachments as $path) {
-                $path = (string) $path;
-                if ( $path === '' || ! @is_readable($path) ) continue;
-                $filename = basename($path);
-                $ctype = function_exists('wp_check_filetype') ? (wp_check_filetype($filename)['type'] ?? '') : '';
-                if ( ! $ctype || $ctype === '' ) { $ctype = function_exists('mime_content_type') ? @mime_content_type($path) : ''; }
-                if ( ! $ctype || $ctype === '' ) { $ctype = 'application/octet-stream'; }
-                $data = @file_get_contents($path);
-                if ( $data === false ) continue;
-                $mime .= "--{$boundary_mixed}\r\n";
-                $mime .= "Content-Type: {$ctype}; name=\"{$filename}\"\r\n";
-                $mime .= "Content-Transfer-Encoding: base64\r\n";
-                $mime .= "Content-Disposition: attachment; filename=\"{$filename}\"\r\n\r\n";
-                $mime .= chunk_split(base64_encode($data)) . "\r\n";
-            }
-            $mime .= "--{$boundary_mixed}--\r\n";
-        } else {
-            if ( $is_html ) {
-                // multipart/alternative root
-                // Plain part
-                $mime .= "--{$boundary_alt}\r\n";
-                $mime .= "Content-Type: text/plain; charset=UTF-8\r\n";
-                $mime .= "Content-Transfer-Encoding: base64\r\n\r\n";
-                $mime .= chunk_split(base64_encode($text_body)) . "\r\n";
-                // HTML part
-                $mime .= "--{$boundary_alt}\r\n";
-                $mime .= "Content-Type: text/html; charset=UTF-8\r\n";
-                $mime .= "Content-Transfer-Encoding: base64\r\n\r\n";
-                $mime .= chunk_split(base64_encode($html_body)) . "\r\n";
-                $mime .= "--{$boundary_alt}--\r\n";
-            } else {
-                // simple text/plain root
-                $mime .= $text_body;
-            }
-        }
 
         $rate = isset($this->opts['rate_limit']) ? max(0, intval($this->opts['rate_limit'])) : 10;
         if ( $rate > 0 ) { usleep(intval(1000000 / max(1, $rate))); }
 
-        $result = (new SesClient())->send_raw_email($mime);
+        $client = new SesClient();
+        $send_size = strlen($message);
+
+        if ( $has_attachments ) {
+            $mime = self::build_raw_mime($from_header, $to_header, $subject, $message, $sanitized, $is_html, $attachments);
+            $send_size = strlen($mime);
+            $result = $client->send_raw_email($mime);
+        } else {
+            $text_body = self::html_to_text($message);
+            $html_body = $is_html ? $message : '';
+            $reply_to = null;
+            foreach ($sanitized as $h) {
+                if ( stripos($h, 'reply-to:') === 0 ) {
+                    $reply_to = trim(substr($h, strlen('reply-to:')));
+                    break;
+                }
+            }
+            $result = $client->send_email($from_header, $to, $subject, $html_body, $text_body, $reply_to);
+        }
 
         if ( $result === true ) {
             // Log success with minimal metadata (no message body)
             $to_log = $to_header;
             $sub_log = mb_substr($subject, 0, 120);
             if ( $tag !== '' ) {
-                LogViewer::log(sprintf('SUCCESS tag=%s to=%s subject="%s" bytes=%d', $tag, $to_log, $sub_log, strlen($mime)));
+                LogViewer::log(sprintf('SUCCESS tag=%s to=%s subject="%s" bytes=%d', $tag, $to_log, $sub_log, $send_size));
             } else {
-                LogViewer::log(sprintf('SUCCESS to=%s subject="%s" bytes=%d', $to_log, $sub_log, strlen($mime)));
+                LogViewer::log(sprintf('SUCCESS to=%s subject="%s" bytes=%d', $to_log, $sub_log, $send_size));
             }
             return true;
         }
@@ -271,13 +209,127 @@ class Mailer {
         return $err;
     }
 
-    private function q($text) {
+    public static function q($text) {
         if ($text === '' || preg_match('/^[\x20-\x7E]+$/', $text)) return $text;
         return '=?UTF-8?B?' . base64_encode($text) . '?=';
     }
-    private function qs($subject) {
+    public static function qs($subject) {
         if ($subject === '' || preg_match('/^[\x20-\x7E]+$/', $subject)) return $subject;
         return '=?UTF-8?B?' . base64_encode($subject) . '?=';
+    }
+
+    public static function build_raw_mime($from_header, $to_header, $subject, $message, $sanitized_headers, $is_html, $attachments) {
+        $boundary_mixed = '=_SesMailer_m_' . md5(uniqid('', true));
+        $boundary_alt   = '=_SesMailer_a_' . md5(uniqid('', true));
+
+        $mime  = "";
+        $mime .= "From: {$from_header}\r\n";
+        $mime .= "To: {$to_header}\r\n";
+        $mime .= "Subject: " . self::qs($subject) . "\r\n";
+        $mime .= "MIME-Version: 1.0\r\n";
+
+        $has_attachments = ! empty($attachments);
+
+        if ( $has_attachments ) {
+            $mime .= "Content-Type: multipart/mixed; boundary=\"{$boundary_mixed}\"\r\n";
+        } elseif ( $is_html ) {
+            $mime .= "Content-Type: multipart/alternative; boundary=\"{$boundary_alt}\"\r\n";
+        } else {
+            $mime .= "Content-Type: text/plain; charset=UTF-8\r\n";
+        }
+        foreach ($sanitized_headers as $h) { $mime .= $h . "\r\n"; }
+        $mime .= "\r\n";
+
+        $text_body = self::html_to_text($message);
+        $html_body = $is_html ? $message : '';
+
+        if ( $has_attachments ) {
+            if ( $is_html ) {
+                $mime .= "--{$boundary_mixed}\r\n";
+                $mime .= "Content-Type: multipart/alternative; boundary=\"{$boundary_alt}\"\r\n\r\n";
+                $mime .= "--{$boundary_alt}\r\n";
+                $mime .= "Content-Type: text/plain; charset=UTF-8\r\n";
+                $mime .= "Content-Transfer-Encoding: base64\r\n\r\n";
+                $mime .= chunk_split(base64_encode($text_body)) . "\r\n";
+                $mime .= "--{$boundary_alt}\r\n";
+                $mime .= "Content-Type: text/html; charset=UTF-8\r\n";
+                $mime .= "Content-Transfer-Encoding: base64\r\n\r\n";
+                $mime .= chunk_split(base64_encode($html_body)) . "\r\n";
+                $mime .= "--{$boundary_alt}--\r\n";
+            } else {
+                $mime .= "--{$boundary_mixed}\r\n";
+                $mime .= "Content-Type: text/plain; charset=UTF-8\r\n";
+                $mime .= "Content-Transfer-Encoding: base64\r\n\r\n";
+                $mime .= chunk_split(base64_encode($text_body)) . "\r\n";
+            }
+            foreach ($attachments as $path) {
+                $path = (string) $path;
+                if ( $path === '' || ! @is_readable($path) ) continue;
+                $filename = basename($path);
+                $ctype = function_exists('wp_check_filetype') ? (wp_check_filetype($filename)['type'] ?? '') : '';
+                if ( ! $ctype || $ctype === '' ) { $ctype = function_exists('mime_content_type') ? @mime_content_type($path) : ''; }
+                if ( ! $ctype || $ctype === '' ) { $ctype = 'application/octet-stream'; }
+                $data = @file_get_contents($path);
+                if ( $data === false ) continue;
+                $mime .= "--{$boundary_mixed}\r\n";
+                $mime .= "Content-Type: {$ctype}; name=\"{$filename}\"\r\n";
+                $mime .= "Content-Transfer-Encoding: base64\r\n";
+                $mime .= "Content-Disposition: attachment; filename=\"{$filename}\"\r\n\r\n";
+                $mime .= chunk_split(base64_encode($data)) . "\r\n";
+            }
+            $mime .= "--{$boundary_mixed}--\r\n";
+        } else {
+            if ( $is_html ) {
+                $mime .= "--{$boundary_alt}\r\n";
+                $mime .= "Content-Type: text/plain; charset=UTF-8\r\n";
+                $mime .= "Content-Transfer-Encoding: base64\r\n\r\n";
+                $mime .= chunk_split(base64_encode($text_body)) . "\r\n";
+                $mime .= "--{$boundary_alt}\r\n";
+                $mime .= "Content-Type: text/html; charset=UTF-8\r\n";
+                $mime .= "Content-Transfer-Encoding: base64\r\n\r\n";
+                $mime .= chunk_split(base64_encode($html_body)) . "\r\n";
+                $mime .= "--{$boundary_alt}--\r\n";
+            } else {
+                $mime .= $text_body;
+            }
+        }
+
+        return $mime;
+    }
+
+    /**
+     * Convert HTML email to readable plain text.
+     */
+    public static function html_to_text($html) {
+        // Remove invisible elements entirely.
+        $html = preg_replace('/<head\b[^>]*>.*?<\/head>/is', '', $html);
+        $html = preg_replace('/<style\b[^>]*>.*?<\/style>/is', '', $html);
+        $html = preg_replace('/<script\b[^>]*>.*?<\/script>/is', '', $html);
+
+        // Preserve image alt text: <img alt="Logo"> → [Logo]
+        $html = preg_replace('/<img\b[^>]*\balt=["\']([^"\']*)["\'][^>]*>/i', '[$1]', $html);
+        $html = preg_replace('/<img\b[^>]*>/i', '', $html); // remove remaining img tags with no alt
+
+        // Convert links: <a href="url">text</a> → text (url)
+        $html = preg_replace('/<a\b[^>]*\bhref=["\']([^"\']*)["\'][^>]*>(.*?)<\/a>/is', '$2 ($1)', $html);
+
+        // Insert line breaks before block-level closing tags.
+        $html = preg_replace('/<\/(p|div|tr|table|h[1-6]|li|blockquote)>/i', "\n", $html);
+        $html = preg_replace('/<(br|hr)\b[^>]*\/?>/i', "\n", $html);
+
+        // Strip all remaining HTML tags.
+        $html = wp_strip_all_tags($html);
+
+        // Decode HTML entities.
+        $text = html_entity_decode($html, ENT_QUOTES, 'UTF-8');
+
+        // Collapse horizontal whitespace (spaces/tabs) on each line, preserving newlines.
+        $text = preg_replace('/[^\S\n]+/', ' ', $text);
+
+        // Collapse 3+ consecutive blank lines into 2.
+        $text = preg_replace('/\n{3,}/', "\n\n", $text);
+
+        return trim($text);
     }
 
     public function log_failure($wp_error) {
