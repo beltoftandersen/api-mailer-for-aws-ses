@@ -137,25 +137,9 @@ class Queue {
         $rate = isset($opts['rate_limit']) ? max(0, intval($opts['rate_limit'])) : 10;
         if ( $rate > 0 ) { usleep(intval(1000000 / max(1, $rate))); }
 
-        $client = new SesClient();
-        $send_size = strlen($message);
-
-        if ( $has_attachments ) {
-            $mime = Mailer::build_raw_mime($from_header, $to_header, $subject, $message, $sanitized, $is_html, $attachments);
-            $send_size = strlen($mime);
-            $result = $client->send_raw_email($mime);
-        } else {
-            $text_body = Mailer::html_to_text($message);
-            $html_body = $is_html ? $message : '';
-            $reply_to = null;
-            foreach ($sanitized as $h) {
-                if ( stripos($h, 'reply-to:') === 0 ) {
-                    $reply_to = trim(substr($h, strlen('reply-to:')));
-                    break;
-                }
-            }
-            $result = $client->send_email($from_header, $to, $subject, $html_body, $text_body, $reply_to);
-        }
+        $mime = Mailer::build_raw_mime($from_header, $to_header, $subject, $message, $sanitized, $is_html, $attachments);
+        $send_size = strlen($mime);
+        $result = (new SesClient())->send_raw_email($mime);
         if ( $result === true ) {
             self::maybe_log(sprintf('SUCCESS%s to=%s subject="%s" bytes=%d attempt=%d', self::tag_str($tag), $to_header, mb_substr($subject, 0, 120), $send_size, $attempt));
             if ( $job_id !== '' ) { self::delete_job($job_id); }
