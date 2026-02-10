@@ -3,7 +3,7 @@
 Amazon SES API mailer for WordPress that replaces wp_mail() with direct SES SendRawEmail API calls. No SMTP layer, minimal overhead, and
 optional background queueing.
 
-- Stable version: 1.1
+- Stable version: 1.2
 - Requires: WordPress 5.6+, PHP 7.4+
 - Author: Chimkins IT
 - Text domain: api-mailer-for-aws-ses
@@ -125,6 +125,12 @@ The plugin pauses between sends based on the configured per‑second rate to hel
 - Compiled binary: languages/api-mailer-for-aws-ses-da_DK.mo
 
 ## Changelog
+
+### 1.2
+
+- Use SES SendEmail structured API for emails without attachments, eliminating duplicated MIME construction.
+- Extract shared `build_raw_mime()` for the attachment fallback path via SendRawEmail.
+- Fix broken plain text generation in background queue (was using `wp_strip_all_tags` instead of `html_to_text`).
 
 ### 1.1
 
