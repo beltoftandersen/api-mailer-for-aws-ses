@@ -104,38 +104,13 @@ class Mailer {
         $headers = is_array($atts['headers']) ? $atts['headers'] : array_filter(
             array_map('trim', explode("\n", str_replace("\r", "\n", (string) $atts['headers'])))
         );
-        // Detect desired content type from headers or filters (e.g., WooCommerce sets HTML)
-        $content_type = 'text/plain; charset=UTF-8';
-        foreach ((array)$headers as $hline) {
-            $l = trim((string)$hline);
-            if ( stripos($l, 'content-type:') === 0 ) {
-                if ( stripos($l, 'text/html') !== false ) { $content_type = 'text/html; charset=UTF-8'; }
-                break;
-            }
-        }
-        // Allow other plugins to influence content type similar to core's wp_mail
-        if ( function_exists('apply_filters') ) {
-            // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- core wp_mail_content_type filter
-            $filtered = apply_filters('wp_mail_content_type', $content_type);
-            if ( is_string($filtered) && stripos($filtered, 'text/html') !== false ) {
-                $content_type = 'text/html; charset=UTF-8';
-            }
-        }
-        $sanitized = array();
-        $count = 0;
+
+        // Extract tag for logging
+        $tag = '';
         foreach ($headers as $h) {
             $line = trim(str_replace(array("\r","\n"), '', (string)$h));
-            if ( $line === '' ) continue;
-            if ( preg_match('/^(from|to|subject|content-type)\s*:/i', $line) ) continue;
-            if ( stripos($line, 'x-') !== 0 && stripos($line, 'reply-to:') !== 0 ) continue;
-            if ( strlen($line) > 256 ) $line = substr($line, 0, 256);
-            $sanitized[] = $line;
-            $count++; if ( $count >= 10 ) break;
-        }
-        $tag = '';
-        foreach ($sanitized as $h) {
-            if ( stripos($h, 'x-ses-mailer-tag:') === 0 ) {
-                $tag = trim(substr($h, strlen('x-ses-mailer-tag:')));
+            if ( stripos($line, 'x-ses-mailer-tag:') === 0 ) {
+                $tag = trim(substr($line, strlen('x-ses-mailer-tag:')));
                 $tag = preg_replace('/[^A-Za-z0-9._-]/', '', $tag);
                 break;
             }
@@ -147,30 +122,25 @@ class Mailer {
         if ( $from_name === '' ) $from_name = get_bloginfo('name');
         if ( ! is_email($from_email) ) return new WP_Error('ses_from_invalid', 'Configured From Email is invalid or missing.');
 
-        $to_header = implode(', ', $to);
-        $subject   = (string) $atts['subject'];
-        $message   = (string) $atts['message'];
-        $from_header = $from_name !== '' ? sprintf('"%s" <%s>', self::q($from_name), $from_email) : $from_email;
-
+        $subject = (string) $atts['subject'];
+        $message = (string) $atts['message'];
         $attachments = (array) $atts['attachments'];
-        $has_attachments = ! empty($attachments);
-        $is_html = stripos($content_type, 'text/html') !== false;
 
         $rate = isset($this->opts['rate_limit']) ? max(0, intval($this->opts['rate_limit'])) : 10;
         if ( $rate > 0 ) { usleep(intval(1000000 / max(1, $rate))); }
 
-        $mime = self::build_raw_mime($from_header, $to_header, $subject, $message, $sanitized, $is_html, $attachments);
+        $mime = self::build_mime($to, $subject, $message, $headers, $attachments, $from_email, $from_name);
         $send_size = strlen($mime);
         $result = (new SesClient())->send_raw_email($mime);
 
+        $to_header = implode(', ', $to);
+
         if ( $result === true ) {
-            // Log success with minimal metadata (no message body)
-            $to_log = $to_header;
             $sub_log = mb_substr($subject, 0, 120);
             if ( $tag !== '' ) {
-                LogViewer::log(sprintf('SUCCESS tag=%s to=%s subject="%s" bytes=%d', $tag, $to_log, $sub_log, $send_size));
+                LogViewer::log(sprintf('SUCCESS tag=%s to=%s subject="%s" bytes=%d', $tag, $to_header, $sub_log, $send_size));
             } else {
-                LogViewer::log(sprintf('SUCCESS to=%s subject="%s" bytes=%d', $to_log, $sub_log, $send_size));
+                LogViewer::log(sprintf('SUCCESS to=%s subject="%s" bytes=%d', $to_header, $sub_log, $send_size));
             }
             return true;
         }
@@ -193,92 +163,140 @@ class Mailer {
         return $err;
     }
 
-    public static function q($text) {
-        if ($text === '' || preg_match('/^[\x20-\x7E]+$/', $text)) return $text;
-        return '=?UTF-8?B?' . base64_encode($text) . '?=';
-    }
-    public static function qs($subject) {
-        if ($subject === '' || preg_match('/^[\x20-\x7E]+$/', $subject)) return $subject;
-        return '=?UTF-8?B?' . base64_encode($subject) . '?=';
-    }
+    /**
+     * Build a complete MIME message using PHPMailer (bundled with WordPress).
+     *
+     * @param array  $to          Recipient email addresses.
+     * @param string $subject     Email subject.
+     * @param string $message     Email body (HTML or plain text).
+     * @param array  $headers     Raw header lines from wp_mail().
+     * @param array  $attachments File paths to attach.
+     * @param string $from_email  Sender email address.
+     * @param string $from_name   Sender display name.
+     * @return string Complete MIME message ready for SendRawEmail.
+     */
+    public static function build_mime($to, $subject, $message, $headers, $attachments, $from_email, $from_name) {
+        // Load PHPMailer from WordPress core
+        require_once ABSPATH . WPINC . '/PHPMailer/PHPMailer.php';
+        require_once ABSPATH . WPINC . '/PHPMailer/Exception.php';
 
-    public static function build_raw_mime($from_header, $to_header, $subject, $message, $sanitized_headers, $is_html, $attachments) {
-        $boundary_mixed = '=_SesMailer_m_' . md5(uniqid('', true));
-        $boundary_alt   = '=_SesMailer_a_' . md5(uniqid('', true));
+        $phpmailer = new \PHPMailer\PHPMailer\PHPMailer(true);
+        $phpmailer->CharSet = \PHPMailer\PHPMailer\PHPMailer::CHARSET_UTF8;
+        $phpmailer->XMailer = ' '; // Suppress X-Mailer header
 
-        $mime  = "";
-        $mime .= "From: {$from_header}\r\n";
-        $mime .= "To: {$to_header}\r\n";
-        $mime .= "Subject: " . self::qs($subject) . "\r\n";
-        $mime .= "MIME-Version: 1.0\r\n";
+        // From
+        $phpmailer->setFrom($from_email, $from_name);
 
-        $has_attachments = ! empty($attachments);
-
-        if ( $has_attachments ) {
-            $mime .= "Content-Type: multipart/mixed; boundary=\"{$boundary_mixed}\"\r\n";
-        } elseif ( $is_html ) {
-            $mime .= "Content-Type: multipart/alternative; boundary=\"{$boundary_alt}\"\r\n";
-        } else {
-            $mime .= "Content-Type: text/plain; charset=UTF-8\r\n";
-        }
-        foreach ($sanitized_headers as $h) { $mime .= $h . "\r\n"; }
-        $mime .= "\r\n";
-
-        $text_body = self::html_to_text($message);
-        $html_body = $is_html ? $message : '';
-
-        if ( $has_attachments ) {
-            if ( $is_html ) {
-                $mime .= "--{$boundary_mixed}\r\n";
-                $mime .= "Content-Type: multipart/alternative; boundary=\"{$boundary_alt}\"\r\n\r\n";
-                $mime .= "--{$boundary_alt}\r\n";
-                $mime .= "Content-Type: text/plain; charset=UTF-8\r\n";
-                $mime .= "Content-Transfer-Encoding: base64\r\n\r\n";
-                $mime .= chunk_split(base64_encode($text_body)) . "\r\n";
-                $mime .= "--{$boundary_alt}\r\n";
-                $mime .= "Content-Type: text/html; charset=UTF-8\r\n";
-                $mime .= "Content-Transfer-Encoding: base64\r\n\r\n";
-                $mime .= chunk_split(base64_encode($html_body)) . "\r\n";
-                $mime .= "--{$boundary_alt}--\r\n";
-            } else {
-                $mime .= "--{$boundary_mixed}\r\n";
-                $mime .= "Content-Type: text/plain; charset=UTF-8\r\n";
-                $mime .= "Content-Transfer-Encoding: base64\r\n\r\n";
-                $mime .= chunk_split(base64_encode($text_body)) . "\r\n";
-            }
-            foreach ($attachments as $path) {
-                $path = (string) $path;
-                if ( $path === '' || ! @is_readable($path) ) continue;
-                $filename = basename($path);
-                $ctype = function_exists('wp_check_filetype') ? (wp_check_filetype($filename)['type'] ?? '') : '';
-                if ( ! $ctype || $ctype === '' ) { $ctype = function_exists('mime_content_type') ? @mime_content_type($path) : ''; }
-                if ( ! $ctype || $ctype === '' ) { $ctype = 'application/octet-stream'; }
-                $data = @file_get_contents($path);
-                if ( $data === false ) continue;
-                $mime .= "--{$boundary_mixed}\r\n";
-                $mime .= "Content-Type: {$ctype}; name=\"{$filename}\"\r\n";
-                $mime .= "Content-Transfer-Encoding: base64\r\n";
-                $mime .= "Content-Disposition: attachment; filename=\"{$filename}\"\r\n\r\n";
-                $mime .= chunk_split(base64_encode($data)) . "\r\n";
-            }
-            $mime .= "--{$boundary_mixed}--\r\n";
-        } else {
-            if ( $is_html ) {
-                $mime .= "--{$boundary_alt}\r\n";
-                $mime .= "Content-Type: text/plain; charset=UTF-8\r\n";
-                $mime .= "Content-Transfer-Encoding: base64\r\n\r\n";
-                $mime .= chunk_split(base64_encode($text_body)) . "\r\n";
-                $mime .= "--{$boundary_alt}\r\n";
-                $mime .= "Content-Type: text/html; charset=UTF-8\r\n";
-                $mime .= "Content-Transfer-Encoding: base64\r\n\r\n";
-                $mime .= chunk_split(base64_encode($html_body)) . "\r\n";
-                $mime .= "--{$boundary_alt}--\r\n";
-            } else {
-                $mime .= $text_body;
+        // To recipients
+        foreach ((array) $to as $addr) {
+            $addr = trim($addr);
+            if ( $addr !== '' ) {
+                $phpmailer->addAddress($addr);
             }
         }
 
-        return $mime;
+        // Subject
+        $phpmailer->Subject = $subject;
+
+        // Determine content type from headers and filters
+        $content_type = 'text/plain';
+        foreach ((array) $headers as $hline) {
+            $l = trim((string) $hline);
+            if ( stripos($l, 'content-type:') === 0 ) {
+                if ( stripos($l, 'text/html') !== false ) {
+                    $content_type = 'text/html';
+                }
+                break;
+            }
+        }
+        if ( function_exists('apply_filters') ) {
+            // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- core wp_mail_content_type filter
+            $filtered = apply_filters('wp_mail_content_type', $content_type);
+            if ( is_string($filtered) && stripos($filtered, 'text/html') !== false ) {
+                $content_type = 'text/html';
+            }
+        }
+
+        $is_html = ($content_type === 'text/html');
+        if ( $is_html ) {
+            $phpmailer->isHTML(true);
+            $phpmailer->Body    = $message;
+            $phpmailer->AltBody = self::html_to_text($message);
+        } else {
+            $phpmailer->isHTML(false);
+            $phpmailer->Body = $message;
+        }
+
+        // Parse headers for Reply-To, CC, BCC, and custom X-* headers
+        foreach ((array) $headers as $hline) {
+            $line = trim(str_replace(array("\r", "\n"), '', (string) $hline));
+            if ( $line === '' ) continue;
+
+            // Skip headers PHPMailer handles via its own setters
+            if ( preg_match('/^(from|to|subject|content-type|mime-version)\s*:/i', $line) ) continue;
+
+            if ( stripos($line, 'reply-to:') === 0 ) {
+                $value = trim(substr($line, strlen('reply-to:')));
+                if ( $value !== '' ) {
+                    // Parse "Name <email>" or plain "email"
+                    if ( preg_match('/^(.+)<([^>]+)>$/', $value, $m) ) {
+                        $phpmailer->addReplyTo(trim($m[2]), trim($m[1], " \t\""));
+                    } else {
+                        $phpmailer->addReplyTo($value);
+                    }
+                }
+                continue;
+            }
+
+            if ( stripos($line, 'cc:') === 0 ) {
+                $value = trim(substr($line, strlen('cc:')));
+                if ( $value !== '' ) {
+                    foreach ( array_map('trim', explode(',', $value)) as $cc_addr ) {
+                        if ( $cc_addr !== '' ) {
+                            if ( preg_match('/^(.+)<([^>]+)>$/', $cc_addr, $m) ) {
+                                $phpmailer->addCC(trim($m[2]), trim($m[1], " \t\""));
+                            } else {
+                                $phpmailer->addCC($cc_addr);
+                            }
+                        }
+                    }
+                }
+                continue;
+            }
+
+            if ( stripos($line, 'bcc:') === 0 ) {
+                $value = trim(substr($line, strlen('bcc:')));
+                if ( $value !== '' ) {
+                    foreach ( array_map('trim', explode(',', $value)) as $bcc_addr ) {
+                        if ( $bcc_addr !== '' ) {
+                            if ( preg_match('/^(.+)<([^>]+)>$/', $bcc_addr, $m) ) {
+                                $phpmailer->addBCC(trim($m[2]), trim($m[1], " \t\""));
+                            } else {
+                                $phpmailer->addBCC($bcc_addr);
+                            }
+                        }
+                    }
+                }
+                continue;
+            }
+
+            // Pass through custom headers (X-*, etc.)
+            if ( stripos($line, 'x-') === 0 ) {
+                $phpmailer->addCustomHeader($line);
+            }
+        }
+
+        // Attachments
+        foreach ((array) $attachments as $path) {
+            $path = (string) $path;
+            if ( $path !== '' && @is_readable($path) ) {
+                $phpmailer->addAttachment($path);
+            }
+        }
+
+        // Build the MIME message (like FluentSMTP: preSend + getSentMIMEMessage)
+        $phpmailer->preSend();
+        return $phpmailer->getSentMIMEMessage();
     }
 
     /**

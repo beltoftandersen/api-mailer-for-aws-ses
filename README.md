@@ -28,7 +28,7 @@ API (AWS SigV4). It avoids SMTP and PHPMailer on the hot path, reducing latency 
 
 ## Why It’s Fast
 
-- Bypasses SMTP/PHPMailer and talks to SES directly
+- Bypasses SMTP and talks to SES directly; uses PHPMailer only for battle-tested MIME construction
 - Optional background queue returns control to the request immediately
 - Uses tiny cron/action arguments: stores the full payload server‑side and passes only a job_id
 - Log trimming and an option to disable logging keep disk I/O low
@@ -128,8 +128,9 @@ The plugin pauses between sends based on the configured per‑second rate to hel
 
 ### 1.2
 
-- Use SES SendEmail structured API for emails without attachments, eliminating duplicated MIME construction.
-- Extract shared `build_raw_mime()` for the attachment fallback path via SendRawEmail.
+- Use PHPMailer (bundled with WordPress) for MIME construction instead of manual MIME building; consistent with FluentSMTP and other major WP mailer plugins.
+- CC/BCC support via PHPMailer header parsing (previously silently dropped).
+- Remove dead `SendEmail` structured API code and manual MIME helpers.
 - Fix broken plain text generation in background queue (was using `wp_strip_all_tags` instead of `html_to_text`).
 
 ### 1.1
