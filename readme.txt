@@ -105,6 +105,10 @@ A: Yes. Use the wp-config constants and enable “Read AWS credentials from wp-c
 3. Status tab showing SES send quotas
 4. Logs tab with recent entries
 
+== About the Author ==
+
+API Mailer for AWS SES is built and maintained by [Chimkins IT](https://chimkins.com), a team specializing in WooCommerce and Odoo ERP integrations. Check out our [Odoo WooCommerce Connector](https://chimkins.com) for real-time sync between your WooCommerce store and Odoo.
+
 == Changelog ==
 = 1.3 =
 - Use PHPMailer (bundled with WordPress) for MIME construction instead of manual MIME building; consistent with FluentSMTP and other major WP mailer plugins.
