@@ -160,6 +160,10 @@ The plugin pauses between sends based on the configured per‑second rate to hel
    - Settings link in plugin list
    - wp-config.php credential mode
 
+## About the Author
+
+API Mailer for AWS SES is built and maintained by [Chimkins IT](https://chimkins.com), a team specializing in WooCommerce and Odoo ERP integrations. Check out our [Odoo WooCommerce Connector](https://chimkins.com) for real-time sync between your WooCommerce store and Odoo.
+
 ## License
 
 GPLv2 or later. See https://www.gnu.org/licenses/gpl-2.0.html.
