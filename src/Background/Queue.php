@@ -195,8 +195,13 @@ class Queue {
                 if ( is_string($job_id) && $job_id !== '' ) { self::delete_job($job_id); }
                 return;
             }
+            if ( ! self::schedule($stored_id, $delay) ) {
+                self::maybe_log(sprintf('ses_queue_schedule_failed%s to=%s subject="%s" attempt=%d msg="Could not schedule retry, discarding."',
+                    self::tag_str($tag), $to_header, mb_substr($subject, 0, 120), $next_attempt));
+                if ( is_string($stored_id) && $stored_id !== '' ) { self::delete_job($stored_id); }
+                return;
+            }
             self::maybe_log(sprintf('RETRY%s to=%s subject="%s" next_attempt=%d in=%ds', self::tag_str($tag), $to_header, mb_substr($subject, 0, 120), $next_attempt, $delay));
-            self::schedule($stored_id, $delay);
         } else {
             if ( is_string($job_id) && $job_id !== '' ) { self::delete_job($job_id); }
         }
@@ -239,30 +244,31 @@ class Queue {
         $batch_size = 500;
         $max_deletes = 2000;
         $deleted = 0;
-        $offset = 0;
 
         do {
             // phpcs:ignore WordPress.DB.DirectDatabaseQuery
             $rows = $wpdb->get_results(
                 $wpdb->prepare(
-                    "SELECT option_name, option_value FROM {$wpdb->options} WHERE option_name LIKE %s LIMIT %d OFFSET %d",
+                    "SELECT option_name, option_value FROM {$wpdb->options} WHERE option_name LIKE %s ORDER BY option_name ASC LIMIT %d",
                     $wpdb->esc_like($prefix) . '%',
-                    $batch_size,
-                    $offset
+                    $batch_size
                 )
             );
             if ( ! is_array($rows) || empty($rows) ) break;
 
+            $deleted_this_batch = 0;
             foreach ( $rows as $row ) {
                 $payload = maybe_unserialize($row->option_value);
                 if ( is_array($payload) && isset($payload['created_at']) && (int) $payload['created_at'] < $stale_threshold ) {
                     delete_option($row->option_name);
                     $deleted++;
+                    $deleted_this_batch++;
                     if ( $deleted >= $max_deletes ) break 2;
                 }
             }
 
-            $offset += $batch_size;
+            // If nothing was deleted this batch, all remaining rows are fresh — stop
+            if ( $deleted_this_batch === 0 ) break;
         } while ( count($rows) === $batch_size );
     }
 

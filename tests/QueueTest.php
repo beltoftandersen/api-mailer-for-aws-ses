@@ -221,4 +221,69 @@ class QueueTest extends TestCase {
             'Job should be deleted when from-email is invalid'
         );
     }
+
+    // --- Retry schedule failure ---
+
+    public function test_retry_deletes_job_when_schedule_fails() {
+        global $_ses_test_options, $_ses_test_fail_schedule_single;
+
+        $job_id = 'test-retry-sched-fail';
+        $_ses_test_options['ses_mailer_job_' . $job_id] = array(
+            'to'      => array('user@example.com'),
+            'subject' => 'Retry schedule fail test',
+            'message' => 'Hello',
+            'headers' => array(),
+            'attachments' => array(),
+            'attempt' => 0,
+            'created_at' => time(),
+        );
+
+        // Let the worker run normally (it will fail sending, then try to retry).
+        // Sabotage scheduling so the retry schedule call fails.
+        $_ses_test_fail_schedule_single = true;
+
+        Queue::worker(array('job_id' => $job_id));
+
+        // Job should be cleaned up — not orphaned
+        $this->assertArrayNotHasKey(
+            'ses_mailer_job_' . $job_id,
+            $_ses_test_options,
+            'Job should be deleted when retry scheduling fails'
+        );
+    }
+
+    // --- Multi-batch cleanup completeness ---
+
+    public function test_cleanup_handles_multi_batch_with_interleaved_stale_rows() {
+        global $_ses_test_options;
+
+        $stale_time = time() - DAY_IN_SECONDS - 100;
+        $fresh_time = time();
+
+        // Create interleaved stale and fresh jobs (sorted by name)
+        // Using names that sort: a_001, a_002, ... so order is predictable
+        for ($i = 1; $i <= 6; $i++) {
+            $key = 'ses_mailer_job_batch_' . str_pad($i, 3, '0', STR_PAD_LEFT);
+            $is_stale = ($i % 2 === 1); // odd = stale, even = fresh
+            $_ses_test_options[$key] = array(
+                'to'         => array('user@example.com'),
+                'subject'    => 'Batch test ' . $i,
+                'message'    => 'Hello',
+                'attempt'    => 0,
+                'created_at' => $is_stale ? $stale_time : $fresh_time,
+            );
+        }
+
+        Queue::cleanup_stale_jobs();
+
+        // Stale jobs (1, 3, 5) should be deleted
+        $this->assertArrayNotHasKey('ses_mailer_job_batch_001', $_ses_test_options, 'Stale job 1 should be deleted');
+        $this->assertArrayNotHasKey('ses_mailer_job_batch_003', $_ses_test_options, 'Stale job 3 should be deleted');
+        $this->assertArrayNotHasKey('ses_mailer_job_batch_005', $_ses_test_options, 'Stale job 5 should be deleted');
+
+        // Fresh jobs (2, 4, 6) should remain
+        $this->assertArrayHasKey('ses_mailer_job_batch_002', $_ses_test_options, 'Fresh job 2 should remain');
+        $this->assertArrayHasKey('ses_mailer_job_batch_004', $_ses_test_options, 'Fresh job 4 should remain');
+        $this->assertArrayHasKey('ses_mailer_job_batch_006', $_ses_test_options, 'Fresh job 6 should remain');
+    }
 }

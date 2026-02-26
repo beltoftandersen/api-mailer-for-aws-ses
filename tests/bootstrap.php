@@ -104,7 +104,68 @@ function wp_parse_args($args, $defaults = array()) {
     return array_merge($defaults, $args);
 }
 function apply_filters($tag, $value) { return $value; }
+function maybe_unserialize($data) {
+    if ( is_serialized($data) ) return @unserialize($data);
+    return $data;
+}
+function is_serialized($data) {
+    if ( ! is_string($data) ) return false;
+    $data = trim($data);
+    if ( $data === 'N;' ) return true;
+    if ( preg_match('/^([adObis]):/', $data, $m) ) {
+        return @unserialize($data) !== false || $data === 'b:0;';
+    }
+    return false;
+}
 // mb_substr is a PHP built-in when mbstring extension is loaded (no stub needed)
+
+// --- $wpdb stub ---
+// Simulates wpdb for cleanup_stale_jobs() using $_ses_test_options as backing store.
+class SesTestWpdb {
+    public $options = 'wp_options';
+    public function esc_like($text) { return addcslashes($text, '_%\\'); }
+    public function prepare($query, ...$args) {
+        // Simple placeholder replacement for test purposes
+        $i = 0;
+        return preg_replace_callback('/%[sd]/', function($m) use ($args, &$i) {
+            $val = isset($args[$i]) ? $args[$i] : '';
+            $i++;
+            return is_int($val) ? (string)$val : "'" . $val . "'";
+        }, $query);
+    }
+    public function get_results($query) {
+        global $_ses_test_options;
+        // Parse LIKE pattern and LIMIT from the query
+        $prefix = '';
+        if ( preg_match("/LIKE '([^']+)'/", $query, $m) ) {
+            $raw = $m[1];
+            // Unescape SQL LIKE escapes: \_ → _, \% → %, \\ → \
+            // Then replace SQL wildcards with placeholders, preg_quote the rest
+            $pat = str_replace(array('\\_', '\\%', '\\\\'), array("\x01", "\x02", "\x03"), $raw);
+            $pat = preg_quote($pat, '/');
+            $pat = str_replace(array('%', '_'), array('.*', '.'), $pat);
+            $pat = str_replace(array("\x01", "\x02", "\x03"), array('_', '%', '\\\\'), $pat);
+            $prefix = '/^' . $pat . '$/';
+        }
+        $limit = PHP_INT_MAX;
+        if ( preg_match('/LIMIT (\d+)/', $query, $m) ) { $limit = (int)$m[1]; }
+
+        $matching = array();
+        $keys = array_keys($_ses_test_options);
+        sort($keys); // ORDER BY option_name ASC
+        foreach ( $keys as $key ) {
+            if ( $prefix !== '' && ! preg_match($prefix, $key) ) continue;
+            $row = new \stdClass();
+            $row->option_name  = $key;
+            $row->option_value = is_array($_ses_test_options[$key]) ? serialize($_ses_test_options[$key]) : $_ses_test_options[$key];
+            $matching[] = $row;
+            if ( count($matching) >= $limit ) break;
+        }
+        return $matching;
+    }
+}
+global $wpdb;
+$wpdb = new SesTestWpdb();
 
 // WP_Error stub
 if ( ! class_exists('WP_Error') ) {
