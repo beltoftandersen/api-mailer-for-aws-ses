@@ -58,8 +58,8 @@ class AdminPage {
         self::add_number('rate_limit', __('Rate Limit (per second)', 'api-mailer-for-aws-ses'), 10);
         self::add_textarea('custom_headers', __('Custom Headers (X-*, one per line)', 'api-mailer-for-aws-ses'), 'X-Tag: Value');
         $log_desc = function_exists('wc_get_logger')
-            ? esc_html__('When enabled, logs appear in WooCommerce → Status → Logs (source: api-mailer-for-aws-ses).', 'api-mailer-for-aws-ses')
-            : esc_html__('When enabled, logs are written to the PHP error log (typically wp-content/debug.log).', 'api-mailer-for-aws-ses');
+            ? __('When enabled, logs appear in WooCommerce -> Status -> Logs (source: api-mailer-for-aws-ses).', 'api-mailer-for-aws-ses')
+            : __('When enabled, logs are written to the PHP error log (typically wp-content/debug.log).', 'api-mailer-for-aws-ses');
         self::add_checkbox('disable_logging', __('Disable logging', 'api-mailer-for-aws-ses'), $log_desc);
         self::add_checkbox('background_send', __('Send emails in background (queue)', 'api-mailer-for-aws-ses'));
         self::add_checkbox('cleanup_on_uninstall', __('Clean up plugin data on deletion', 'api-mailer-for-aws-ses'));
@@ -216,7 +216,7 @@ class AdminPage {
             printf('<input type="checkbox" name="%1$s[%2$s]" value="1" %3$s />',
                 esc_attr(self::OPTION), esc_attr($key), checked($val, '1', false));
             if ( $description !== '' ) {
-                echo '<p class="description">' . $description . '</p>';
+                echo '<p class="description">' . esc_html($description) . '</p>';
             }
         }, self::PAGE_SLUG, self::SECTION_ID);
     }

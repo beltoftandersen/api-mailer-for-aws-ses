@@ -28,6 +28,7 @@ class LogViewer {
         }
 
         // Fallback: PHP error log
+        // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- Fallback logger when WC_Logger is unavailable.
         error_log('[ses-mailer] ' . $message);
     }
 
@@ -43,8 +44,8 @@ class LogViewer {
         if ( function_exists('wc_get_logger') ) {
             $logs_url = admin_url('admin.php?page=wc-status&tab=logs');
             echo '<p>' . sprintf(
-                /* translators: %s: URL to WooCommerce logs */
                 wp_kses(
+                    /* translators: %s: URL to WooCommerce logs */
                     __('Logs are written to <a href="%s">WooCommerce &rarr; Status &rarr; Logs</a> under source <code>api-mailer-for-aws-ses</code>.', 'api-mailer-for-aws-ses'),
                     array('a' => array('href' => array()), 'code' => array())
                 ),
