@@ -1,5 +1,5 @@
 === API Mailer for AWS SES ===
-Contributors: christian198521, Chimkins IT
+Contributors: beltoftnet
 Tags: ses, email, aws, api, mailer
 Requires at least: 5.6
 Tested up to: 6.9
@@ -107,7 +107,7 @@ A: Yes. Use the wp-config constants and enable “Read AWS credentials from wp-c
 
 == About the Author ==
 
-API Mailer for AWS SES is built and maintained by [Chimkins IT](https://chimkins.com), a team specializing in WooCommerce and Odoo ERP integrations. Check out our [Odoo WooCommerce Connector](https://chimkins.com) for real-time sync between your WooCommerce store and Odoo.
+API Mailer for AWS SES is built and maintained by [beltoft.net](https://beltoft.net).
 
 == Changelog ==
 = 1.3 =

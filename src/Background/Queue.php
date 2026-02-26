@@ -14,6 +14,12 @@ class Queue {
 
     public static function init() {
         add_action(self::HOOK, [__CLASS__, 'worker'], 10, 1);
+
+        // Schedule daily cleanup for orphaned jobs
+        add_action('ses_mailer_cleanup_jobs', [__CLASS__, 'cleanup_stale_jobs']);
+        if ( ! wp_next_scheduled('ses_mailer_cleanup_jobs') ) {
+            wp_schedule_event(time(), 'daily', 'ses_mailer_cleanup_jobs');
+        }
     }
 
     public static function is_action_scheduler_available() {
@@ -22,7 +28,6 @@ class Queue {
 
     public static function enqueue($payload) {
         $payload = is_array($payload) ? $payload : array();
-        // Minimal sanitize
         $args = array(
             'to'          => isset($payload['to']) ? (array) $payload['to'] : array(),
             'subject'     => isset($payload['subject']) ? (string) $payload['subject'] : '',
@@ -30,10 +35,12 @@ class Queue {
             'headers'     => isset($payload['headers']) ? (array) $payload['headers'] : array(),
             'attachments' => isset($payload['attachments']) ? (array) $payload['attachments'] : array(),
             'attempt'     => 0,
+            'created_at'  => time(),
         );
-        // Always use job_id indirection to keep args tiny and consistent
         $job_id = self::store_job($args);
+        if ( $job_id === false ) return false;
         self::schedule($job_id, 0);
+        return true;
     }
 
     private static function schedule($job_id, $delay_seconds) {
@@ -44,31 +51,44 @@ class Queue {
                 if ( function_exists('as_schedule_single_action') ) {
                 as_schedule_single_action($when, self::HOOK, array($args), array('group' => 'api-mailer-for-aws-ses'));
                 } else {
-                    if ( ! wp_next_scheduled(self::HOOK, array($args)) ) { wp_schedule_single_event($when, self::HOOK, array($args)); }
+                    self::safe_schedule_cron($when, $args);
                 }
             } else {
                 as_enqueue_async_action(self::HOOK, array($args), 'api-mailer-for-aws-ses');
             }
         } else {
-            if ( ! wp_next_scheduled(self::HOOK, array($args)) ) { wp_schedule_single_event($when, self::HOOK, array($args)); }
+            self::safe_schedule_cron($when, $args);
         }
+    }
+
+    private static function safe_schedule_cron($when, $args) {
+        $lock_key = 'ses_lock_' . md5(wp_json_encode($args));
+        if ( false !== get_transient($lock_key) ) return;
+        set_transient($lock_key, 1, 5);
+        // Recheck after acquiring lock to prevent TOCTOU race
+        if ( ! wp_next_scheduled(self::HOOK, array($args)) ) {
+            wp_schedule_single_event($when, self::HOOK, array($args));
+        }
+        delete_transient($lock_key);
     }
 
     public static function worker($args) {
         $opts = get_option(Options::OPTION, Options::defaults());
-        if ( empty($opts['enable_mailer']) ) return; // Do nothing if mailer disabled
+        if ( empty($opts['enable_mailer']) ) return;
 
-        // Expect job_id indirection; if not present, support legacy full-args jobs by converting them
         $loaded = null; $job_id = isset($args['job_id']) ? (string)$args['job_id'] : '';
         if ( $job_id !== '' ) {
             $loaded = self::load_job($job_id);
             if ( ! is_array($loaded) ) { return; }
         } else {
-            // Legacy path: full payload passed directly (e.g., older scheduled AS job)
+            // Legacy path: full payload passed directly
             if ( is_array($args) ) {
                 $loaded = $args;
-                // Migrate to job_id-based flow for retries
                 $job_id = self::store_job($loaded);
+                if ( ! is_string($job_id) || $job_id === '' ) {
+                    self::maybe_log('ses_queue_persist_failed msg="Legacy worker could not persist job, aborting."');
+                    return;
+                }
             } else {
                 return;
             }
@@ -76,7 +96,7 @@ class Queue {
 
         $to = isset($loaded['to']) ? (array) $loaded['to'] : array();
         $to = array_filter(array_map('sanitize_email', $to));
-        if ( empty($to) ) { if ( $job_id !== '' ) self::delete_job($job_id); return; }
+        if ( empty($to) ) { if ( is_string($job_id) && $job_id !== '' ) self::delete_job($job_id); return; }
 
         $subject = isset($loaded['subject']) ? (string) $loaded['subject'] : '';
         $message = isset($loaded['message']) ? (string) $loaded['message'] : '';
@@ -107,15 +127,30 @@ class Queue {
 
         $to_header = implode(', ', $to);
 
-        $rate = isset($opts['rate_limit']) ? max(0, intval($opts['rate_limit'])) : 10;
-        if ( $rate > 0 ) { usleep(intval(1000000 / max(1, $rate))); }
+        try {
+            $rate = isset($opts['rate_limit']) ? max(0, intval($opts['rate_limit'])) : 10;
+            Mailer::throttle($rate);
 
-        $mime = Mailer::build_mime($to, $subject, $message, $headers, $attachments, $from_email, $from_name);
-        $send_size = strlen($mime);
-        $result = (new SesClient())->send_raw_email($mime);
+            $mime = Mailer::build_mime($to, $subject, $message, $headers, $attachments, $from_email, $from_name);
+            if ( is_wp_error($mime) ) {
+                self::maybe_log(sprintf('FAIL%s to=%s subject="%s" code=%s msg="%s"',
+                    self::tag_str($tag), $to_header, mb_substr($subject, 0, 120),
+                    $mime->get_error_code(), mb_substr($mime->get_error_message(), 0, 200)));
+                if ( is_string($job_id) && $job_id !== '' ) { self::delete_job($job_id); }
+                return;
+            }
+            $send_size = strlen($mime);
+            $result = (new SesClient())->send_raw_email($mime);
+        } catch (\Throwable $e) {
+            self::maybe_log(sprintf('FATAL%s to=%s subject="%s" attempt=%d msg="%s"',
+                self::tag_str($tag), $to_header, mb_substr($subject, 0, 120), $attempt, mb_substr($e->getMessage(), 0, 200)));
+            self::retry_or_discard($loaded, $job_id, $tag, $to_header, $subject, $attempt);
+            return;
+        }
+
         if ( $result === true ) {
             self::maybe_log(sprintf('SUCCESS%s to=%s subject="%s" bytes=%d attempt=%d', self::tag_str($tag), $to_header, mb_substr($subject, 0, 120), $send_size, $attempt));
-            if ( $job_id !== '' ) { self::delete_job($job_id); }
+            if ( is_string($job_id) && $job_id !== '' ) { self::delete_job($job_id); }
             return;
         }
         $err = is_wp_error($result) ? $result : new WP_Error('ses_unknown', 'SES send failed.');
@@ -128,35 +163,47 @@ class Queue {
             $hint = ' hint=Check AWS Access Key/Secret and ensure the Region matches your SES setup.';
         }
         self::maybe_log(sprintf('FAIL%s to=%s subject="%s" code=%s status=%s attempt=%d msg="%s"%s', self::tag_str($tag), $to_header, mb_substr($subject, 0, 120), $code, $status, $attempt, mb_substr($msg, 0, 200), $hint));
+        self::retry_or_discard($loaded, $job_id, $tag, $to_header, $subject, $attempt);
+    }
 
-        // Retry with backoff up to 3 attempts total (attempt 0 + 2 retries => or adjust to 3 retries total)
-        $max_attempts = 3; // total attempts including the first
+    private static function retry_or_discard($loaded, $job_id, $tag, $to_header, $subject, $attempt) {
+        $max_attempts = 3;
         if ( $attempt + 1 < $max_attempts ) {
             $next_attempt = $attempt + 1;
             $delay = 60 * (1 << ($attempt)); // 60, 120
-            self::maybe_log(sprintf('RETRY%s to=%s subject="%s" next_attempt=%d in=%ds', self::tag_str($tag), $to_header, mb_substr($subject, 0, 120), $next_attempt, $delay));
-            // Update stored job and reschedule by job_id
             $loaded['attempt'] = $next_attempt;
-            self::store_job($loaded, $job_id);
-            self::schedule($job_id, $delay);
+            $stored_id = self::store_job($loaded, $job_id);
+            if ( $stored_id === false ) {
+                self::maybe_log(sprintf('ses_queue_persist_failed%s to=%s subject="%s" attempt=%d msg="Could not persist job for retry, discarding."',
+                    self::tag_str($tag), $to_header, mb_substr($subject, 0, 120), $next_attempt));
+                if ( is_string($job_id) && $job_id !== '' ) { self::delete_job($job_id); }
+                return;
+            }
+            self::maybe_log(sprintf('RETRY%s to=%s subject="%s" next_attempt=%d in=%ds', self::tag_str($tag), $to_header, mb_substr($subject, 0, 120), $next_attempt, $delay));
+            self::schedule($stored_id, $delay);
         } else {
-            if ( $job_id !== '' ) { self::delete_job($job_id); }
+            if ( is_string($job_id) && $job_id !== '' ) { self::delete_job($job_id); }
         }
     }
 
+    /**
+     * @return string|false Job ID on success, false on DB write failure.
+     */
     private static function store_job($payload, $job_id = '') {
         $id = $job_id !== '' ? $job_id : self::generate_job_id();
         $key = self::JOB_OPTION_PREFIX . $id;
-        // Use update_option with autoload = no to keep it out of alloptions
-        if ( get_option($key, null) === null ) { add_option($key, $payload, '', 'no'); }
-        else { update_option($key, $payload, false); }
-        return $id;
+        if ( false === get_option($key) ) {
+            $ok = add_option($key, $payload, '', 'no');
+        } else {
+            $ok = update_option($key, $payload, false);
+        }
+        return $ok ? $id : false;
     }
 
     private static function load_job($job_id) {
         $key = self::JOB_OPTION_PREFIX . $job_id;
-        $val = get_option($key, null);
-        return $val;
+        $val = get_option($key, false);
+        return $val !== false ? $val : null;
     }
 
     private static function delete_job($job_id) {
@@ -167,6 +214,26 @@ class Queue {
     private static function generate_job_id() {
         if ( function_exists('wp_generate_uuid4') ) return wp_generate_uuid4();
         return bin2hex( random_bytes(16) );
+    }
+
+    public static function cleanup_stale_jobs() {
+        global $wpdb;
+        $prefix = self::JOB_OPTION_PREFIX;
+        $stale_threshold = time() - DAY_IN_SECONDS;
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+        $rows = $wpdb->get_results(
+            $wpdb->prepare(
+                "SELECT option_name, option_value FROM {$wpdb->options} WHERE option_name LIKE %s LIMIT 100",
+                $wpdb->esc_like($prefix) . '%'
+            )
+        );
+        if ( ! is_array($rows) ) return;
+        foreach ( $rows as $row ) {
+            $payload = maybe_unserialize($row->option_value);
+            if ( is_array($payload) && isset($payload['created_at']) && (int) $payload['created_at'] < $stale_threshold ) {
+                delete_option($row->option_name);
+            }
+        }
     }
 
     private static function maybe_log($msg) {

@@ -4,7 +4,6 @@ if ( ! defined('ABSPATH') ) { exit; }
 
 use SesMailer\Support\Options;
 use SesMailer\Api\SesClient;
-use SesMailer\Logging\LogViewer;
 
 class AdminPage {
     const PAGE_SLUG   = 'ses-mailer';
@@ -58,7 +57,10 @@ class AdminPage {
         self::add_checkbox('force_from', __('Force From on all emails', 'api-mailer-for-aws-ses'));
         self::add_number('rate_limit', __('Rate Limit (per second)', 'api-mailer-for-aws-ses'), 10);
         self::add_textarea('custom_headers', __('Custom Headers (X-*, one per line)', 'api-mailer-for-aws-ses'), 'X-Tag: Value');
-        self::add_checkbox('disable_logging', __('Disable logging in production', 'api-mailer-for-aws-ses'));
+        $log_desc = function_exists('wc_get_logger')
+            ? esc_html__('When enabled, logs appear in WooCommerce → Status → Logs (source: api-mailer-for-aws-ses).', 'api-mailer-for-aws-ses')
+            : esc_html__('When enabled, logs are written to the PHP error log (typically wp-content/debug.log).', 'api-mailer-for-aws-ses');
+        self::add_checkbox('disable_logging', __('Disable logging', 'api-mailer-for-aws-ses'), $log_desc);
         self::add_checkbox('background_send', __('Send emails in background (queue)', 'api-mailer-for-aws-ses'));
         self::add_checkbox('cleanup_on_uninstall', __('Clean up plugin data on deletion', 'api-mailer-for-aws-ses'));
         self::add_checkbox('use_config_env', __('Read AWS credentials from wp-config', 'api-mailer-for-aws-ses'));
@@ -88,17 +90,12 @@ class AdminPage {
             esc_url(admin_url('options-general.php?page=' . self::PAGE_SLUG . '&tab=status')),
             $tab === 'status' ? 'nav-tab-active' : '',
             esc_html__('Status', 'api-mailer-for-aws-ses'));
-        printf('<a href="%s" class="nav-tab %s">%s</a>',
-            esc_url(admin_url('options-general.php?page=' . self::PAGE_SLUG . '&tab=logs')),
-            $tab === 'logs' ? 'nav-tab-active' : '',
-            esc_html__('Logs', 'api-mailer-for-aws-ses'));
         echo '</h2>';
 
         echo '<div class="tab-content">';
         switch ($tab) {
             case 'test':   self::render_test();   break;
             case 'status': self::render_status(); break;
-            case 'logs':   self::render_logs();   break;
             default:       self::render_settings(); break;
         }
         echo '</div></div>';
@@ -193,7 +190,7 @@ class AdminPage {
             echo '<li>❌ ' . esc_html__('Background Sending', 'api-mailer-for-aws-ses') . '</li>';
         }
         if ( ! empty($opts['disable_logging']) ) {
-            echo '<li>⚠️ ' . esc_html__('Logging is disabled', 'api-mailer-for-aws-ses') . '</li>';
+            echo '<li>✅ ' . esc_html__('Logging is disabled', 'api-mailer-for-aws-ses') . '</li>';
         }
         echo '</ul>';
 
@@ -212,14 +209,15 @@ class AdminPage {
         }
     }
 
-    private static function render_logs() { LogViewer::render(); }
-
-    private static function add_checkbox($key, $label) {
-        add_settings_field($key, esc_html($label), function () use ($key) {
+    private static function add_checkbox($key, $label, $description='') {
+        add_settings_field($key, esc_html($label), function () use ($key, $description) {
             $opts = get_option(self::OPTION, Options::defaults());
             $val = isset($opts[$key]) ? $opts[$key] : '0';
             printf('<input type="checkbox" name="%1$s[%2$s]" value="1" %3$s />',
                 esc_attr(self::OPTION), esc_attr($key), checked($val, '1', false));
+            if ( $description !== '' ) {
+                echo '<p class="description">' . $description . '</p>';
+            }
         }, self::PAGE_SLUG, self::SECTION_ID);
     }
     private static function add_text($key, $label, $placeholder='') {

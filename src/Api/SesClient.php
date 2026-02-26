@@ -28,7 +28,7 @@ class SesClient {
             $this->session_token = is_string($st) ? trim($st) : '';
         } else {
             $this->access_key = isset($opts['access_key']) ? trim($opts['access_key']) : '';
-            $this->secret_key = isset($opts['secret_key']) ? trim($opts['secret_key']) : '';
+            $this->secret_key = isset($opts['secret_key']) ? trim(Options::decrypt_secret($opts['secret_key'])) : '';
             $this->region     = isset($opts['region']) ? trim($opts['region']) : '';
             $this->session_token = '';
         }
@@ -59,9 +59,15 @@ class SesClient {
         if ( is_wp_error($response) ) return $response;
         $code = wp_remote_retrieve_response_code($response);
         if ( $code === 200 ) return true;
-        return new WP_Error('ses_api_error', 'SES API error', array(
+        $body = wp_remote_retrieve_body($response);
+        $msg = 'SES API error';
+        $xml = @simplexml_load_string($body);
+        if ( $xml && isset($xml->Error->Message) ) {
+            $msg = (string) $xml->Error->Message;
+        }
+        return new WP_Error('ses_api_error', $msg, array(
             'status' => $code,
-            'body'   => wp_remote_retrieve_body($response),
+            'body'   => $body,
         ));
     }
 

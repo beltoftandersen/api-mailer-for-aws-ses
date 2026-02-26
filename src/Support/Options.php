@@ -5,28 +5,48 @@ if ( ! defined('ABSPATH') ) { exit; }
 class Options {
     const OPTION = 'ses_mailer_options';
 
+    private static $defaults_cache;
+
     public static function defaults() {
-        return array(
-            'enable_mailer'  => '0',
-            'force_from'     => '0',
-            'access_key'     => '',
-            'secret_key'     => '',
-            'region'         => '',
-            'from_email'     => get_option('admin_email'),
-            'from_name'      => get_bloginfo('name'),
-            'reply_to'       => '',
-            'rate_limit'     => '10',
-            'custom_headers' => '',
-            'disable_logging'=> '0',
-            'background_send'=> '0',
-            'cleanup_on_uninstall' => '0',
-            'use_config_env' => '0',
-        );
+        if (self::$defaults_cache === null) {
+            self::$defaults_cache = array(
+                'enable_mailer'  => '0',
+                'force_from'     => '0',
+                'access_key'     => '',
+                'secret_key'     => '',
+                'region'         => '',
+                'from_email'     => get_option('admin_email'),
+                'from_name'      => get_bloginfo('name'),
+                'reply_to'       => '',
+                'rate_limit'     => '10',
+                'custom_headers' => '',
+                'disable_logging'=> '1',
+                'background_send'=> '0',
+                'cleanup_on_uninstall' => '0',
+                'use_config_env' => '0',
+            );
+        }
+        return self::$defaults_cache;
+    }
+
+    public static function encrypt_secret($value) {
+        if ( $value === '' || ! function_exists('openssl_encrypt') ) return $value;
+        $key = wp_salt('auth');
+        $iv  = substr(md5(wp_salt('secure_auth')), 0, 16);
+        $encrypted = openssl_encrypt($value, 'aes-256-cbc', $key, 0, $iv);
+        return $encrypted !== false ? 'enc:' . $encrypted : $value;
+    }
+
+    public static function decrypt_secret($value) {
+        if ( $value === '' || strpos($value, 'enc:') !== 0 ) return $value;
+        if ( ! function_exists('openssl_decrypt') ) return '';
+        $key = wp_salt('auth');
+        $iv  = substr(md5(wp_salt('secure_auth')), 0, 16);
+        $decrypted = openssl_decrypt(substr($value, 4), 'aes-256-cbc', $key, 0, $iv);
+        return $decrypted !== false ? $decrypted : '';
     }
 
     public static function constants_in_use() {
-        // Deprecated meaning: this now only reflects presence of constants/env,
-        // not whether the plugin will use them. Usage is controlled by use_config_env.
         return ( defined('SES_MAILER_ACCESS_KEY') || getenv('SES_MAILER_ACCESS_KEY') )
             || ( defined('SES_MAILER_SECRET_KEY') || getenv('SES_MAILER_SECRET_KEY') )
             || ( defined('SES_MAILER_REGION')     || getenv('SES_MAILER_REGION') )
@@ -37,7 +57,6 @@ class Options {
         $input = is_array($input) ? wp_unslash($input) : array();
         $out   = array();
         $prev  = get_option(self::OPTION, self::defaults());
-        // Use config/env only if explicitly enabled via setting
         $use_config_env = isset($input['use_config_env'])
             ? (($input['use_config_env'] === '1' || $input['use_config_env'] === 1 || $input['use_config_env'] === true) ? '1' : '0')
             : (isset($prev['use_config_env']) ? $prev['use_config_env'] : '0');
@@ -83,8 +102,8 @@ class Options {
                             if ( $raw === $secret_mask ) { $out[$key] = isset($prev[$key]) ? (string) $prev[$key] : ''; }
                             else {
                                 $clean = sanitize_text_field($raw);
-                                $clean = preg_replace('/\s+/', '', $clean); // remove any whitespace users might paste
-                                $out[$key] = $clean;
+                                $clean = preg_replace('/\s+/', '', $clean);
+                                $out[$key] = self::encrypt_secret($clean);
                             }
                         } else { $out[$key] = ''; }
                     }
@@ -106,6 +125,7 @@ class Options {
                                     $line = trim(str_replace(array("\r","\n"), '', $line));
                                     if ( $line === '' ) continue;
                                     if ( stripos($line, 'x-') !== 0 ) continue;
+                                    if ( strpos($line, ':') === false ) continue;
                                     if ( strlen($line) > 256 ) $line = substr($line, 0, 256);
                                     $lines[] = $line;
                                     $count++; if ( $count >= 10 ) break;
