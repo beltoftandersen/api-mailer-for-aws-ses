@@ -115,7 +115,7 @@ class AdminPage {
             $headers = array('X-Ses-Mailer-Tag: TEST');
             $sent = wp_mail($to, 'SES Mailer Test', 'This is a test email via SES API.', $headers);
             if ( is_wp_error($sent) ) {
-                $msg = WP_DEBUG ? $sent->get_error_message() : __('An error occurred while sending. See Logs.', 'api-mailer-for-aws-ses');
+                $msg = WP_DEBUG ? $sent->get_error_message() : __('An error occurred while sending. Check logs for details.', 'api-mailer-for-aws-ses');
                 echo '<div class="notice notice-error"><p><strong>' . esc_html__('Failed to send test email:', 'api-mailer-for-aws-ses') . '</strong> ' . esc_html($msg) . '</p></div>';
             } elseif ( $sent === true ) {
                 $opts = get_option(self::OPTION, Options::defaults());
@@ -125,7 +125,7 @@ class AdminPage {
                     echo '<div class="notice notice-success"><p>' . esc_html__('Test email sent!', 'api-mailer-for-aws-ses') . '</p></div>';
                 }
             } else {
-                echo '<div class="notice notice-error"><p>' . esc_html__('Failed to send test email. Check Logs tab for details.', 'api-mailer-for-aws-ses') . '</p></div>';
+                echo '<div class="notice notice-error"><p>' . esc_html__('Failed to send test email. Check logs for details.', 'api-mailer-for-aws-ses') . '</p></div>';
             }
         }
         echo '<form method="post">';
@@ -142,7 +142,7 @@ class AdminPage {
             $client = new SesClient();
             $res = $client->get_send_quota();
             if ( is_wp_error($res) ) {
-                $msg = WP_DEBUG ? $res->get_error_message() : __('Could not connect to SES. See Logs.', 'api-mailer-for-aws-ses');
+                $msg = WP_DEBUG ? $res->get_error_message() : __('Could not connect to SES. Check logs for details.', 'api-mailer-for-aws-ses');
                 echo '<div class="notice notice-error"><p><strong>' . esc_html__('SES Connection Failed:', 'api-mailer-for-aws-ses') . '</strong> ' . esc_html($msg) . '</p></div>';
                 $data = $res->get_error_data();
                 if ( WP_DEBUG && ( ! empty($data['status']) || ! empty($data['body']) ) ) {

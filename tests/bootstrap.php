@@ -22,10 +22,14 @@ if ( ! defined('DAY_IN_SECONDS') ) {
 
 // Stub global state for WordPress functions
 global $_ses_test_options, $_ses_test_transients, $_ses_test_scheduled, $_ses_test_error_log;
+global $_ses_test_fail_add_option, $_ses_test_fail_update_option, $_ses_test_fail_schedule_single;
 $_ses_test_options    = array();
 $_ses_test_transients = array();
 $_ses_test_scheduled  = array();
 $_ses_test_error_log  = array();
+$_ses_test_fail_add_option      = false;
+$_ses_test_fail_update_option   = false;
+$_ses_test_fail_schedule_single = false;
 
 // --- WordPress function stubs ---
 
@@ -34,13 +38,15 @@ function get_option($key, $default = false) {
     return array_key_exists($key, $_ses_test_options) ? $_ses_test_options[$key] : $default;
 }
 function add_option($key, $value, $deprecated = '', $autoload = 'yes') {
-    global $_ses_test_options;
+    global $_ses_test_options, $_ses_test_fail_add_option;
+    if ( $_ses_test_fail_add_option ) return false;
     if ( array_key_exists($key, $_ses_test_options) ) return false;
     $_ses_test_options[$key] = $value;
     return true;
 }
 function update_option($key, $value, $autoload = null) {
-    global $_ses_test_options;
+    global $_ses_test_options, $_ses_test_fail_update_option;
+    if ( $_ses_test_fail_update_option ) return false;
     $_ses_test_options[$key] = $value;
     return true;
 }
@@ -76,7 +82,8 @@ function wp_next_scheduled($hook, $args = array()) {
     return isset($_ses_test_scheduled[$key]) ? $_ses_test_scheduled[$key] : false;
 }
 function wp_schedule_single_event($timestamp, $hook, $args = array()) {
-    global $_ses_test_scheduled;
+    global $_ses_test_scheduled, $_ses_test_fail_schedule_single;
+    if ( $_ses_test_fail_schedule_single ) return false;
     $key = $hook . '|' . serialize($args);
     $_ses_test_scheduled[$key] = $timestamp;
     return true;

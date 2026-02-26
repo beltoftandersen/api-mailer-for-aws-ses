@@ -39,37 +39,52 @@ class Queue {
         );
         $job_id = self::store_job($args);
         if ( $job_id === false ) return false;
-        self::schedule($job_id, 0);
+        if ( ! self::schedule($job_id, 0) ) {
+            self::delete_job($job_id);
+            return false;
+        }
         return true;
     }
 
+    /**
+     * @return bool True if the job was scheduled, false on failure.
+     */
     private static function schedule($job_id, $delay_seconds) {
         $when = time() + max(0, intval($delay_seconds));
         $args = array('job_id' => $job_id);
         if ( self::is_action_scheduler_available() ) {
             if ( $delay_seconds > 0 || ! function_exists('as_enqueue_async_action') ) {
                 if ( function_exists('as_schedule_single_action') ) {
-                as_schedule_single_action($when, self::HOOK, array($args), array('group' => 'api-mailer-for-aws-ses'));
+                    $result = as_schedule_single_action($when, self::HOOK, array($args), array('group' => 'api-mailer-for-aws-ses'));
+                    return $result !== null && $result !== false && $result !== 0;
                 } else {
-                    self::safe_schedule_cron($when, $args);
+                    return self::safe_schedule_cron($when, $args);
                 }
             } else {
-                as_enqueue_async_action(self::HOOK, array($args), 'api-mailer-for-aws-ses');
+                $result = as_enqueue_async_action(self::HOOK, array($args), 'api-mailer-for-aws-ses');
+                return $result !== null && $result !== false && $result !== 0;
             }
         } else {
-            self::safe_schedule_cron($when, $args);
+            return self::safe_schedule_cron($when, $args);
         }
     }
 
+    /**
+     * @return bool True if the event was scheduled (or already exists), false on failure.
+     */
     private static function safe_schedule_cron($when, $args) {
         $lock_key = 'ses_lock_' . md5(wp_json_encode($args));
-        if ( false !== get_transient($lock_key) ) return;
+        if ( false !== get_transient($lock_key) ) return true; // Already being scheduled
         set_transient($lock_key, 1, 5);
+        $result = true;
         // Recheck after acquiring lock to prevent TOCTOU race
         if ( ! wp_next_scheduled(self::HOOK, array($args)) ) {
-            wp_schedule_single_event($when, self::HOOK, array($args));
+            $result = wp_schedule_single_event($when, self::HOOK, array($args));
+            // wp_schedule_single_event returns true/false in WP 5.7+, void in older
+            if ( $result === null ) $result = true;
         }
         delete_transient($lock_key);
+        return (bool) $result;
     }
 
     public static function worker($args) {
@@ -122,6 +137,7 @@ class Queue {
         if ( ! is_email($from_email) ) {
             self::maybe_log(sprintf('FAIL%s to=%s subject="%s" code=ses_from_invalid status= msg="Configured From Email is invalid or missing."',
                 self::tag_str($tag), implode(', ', $to), mb_substr($subject, 0, 120)));
+            if ( is_string($job_id) && $job_id !== '' ) { self::delete_job($job_id); }
             return;
         }
 
@@ -220,20 +236,34 @@ class Queue {
         global $wpdb;
         $prefix = self::JOB_OPTION_PREFIX;
         $stale_threshold = time() - DAY_IN_SECONDS;
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery
-        $rows = $wpdb->get_results(
-            $wpdb->prepare(
-                "SELECT option_name, option_value FROM {$wpdb->options} WHERE option_name LIKE %s LIMIT 100",
-                $wpdb->esc_like($prefix) . '%'
-            )
-        );
-        if ( ! is_array($rows) ) return;
-        foreach ( $rows as $row ) {
-            $payload = maybe_unserialize($row->option_value);
-            if ( is_array($payload) && isset($payload['created_at']) && (int) $payload['created_at'] < $stale_threshold ) {
-                delete_option($row->option_name);
+        $batch_size = 500;
+        $max_deletes = 2000;
+        $deleted = 0;
+        $offset = 0;
+
+        do {
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+            $rows = $wpdb->get_results(
+                $wpdb->prepare(
+                    "SELECT option_name, option_value FROM {$wpdb->options} WHERE option_name LIKE %s LIMIT %d OFFSET %d",
+                    $wpdb->esc_like($prefix) . '%',
+                    $batch_size,
+                    $offset
+                )
+            );
+            if ( ! is_array($rows) || empty($rows) ) break;
+
+            foreach ( $rows as $row ) {
+                $payload = maybe_unserialize($row->option_value);
+                if ( is_array($payload) && isset($payload['created_at']) && (int) $payload['created_at'] < $stale_threshold ) {
+                    delete_option($row->option_name);
+                    $deleted++;
+                    if ( $deleted >= $max_deletes ) break 2;
+                }
             }
-        }
+
+            $offset += $batch_size;
+        } while ( count($rows) === $batch_size );
     }
 
     private static function maybe_log($msg) {

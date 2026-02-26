@@ -7,9 +7,13 @@ class QueueTest extends TestCase {
 
     protected function setUp(): void {
         global $_ses_test_options, $_ses_test_transients, $_ses_test_scheduled;
+        global $_ses_test_fail_add_option, $_ses_test_fail_update_option, $_ses_test_fail_schedule_single;
         $_ses_test_options    = array();
         $_ses_test_transients = array();
         $_ses_test_scheduled  = array();
+        $_ses_test_fail_add_option      = false;
+        $_ses_test_fail_update_option   = false;
+        $_ses_test_fail_schedule_single = false;
 
         // Set up default plugin options
         $_ses_test_options[Options::OPTION] = array_merge(Options::defaults(), array(
@@ -33,18 +37,15 @@ class QueueTest extends TestCase {
     }
 
     public function test_enqueue_returns_false_when_db_write_fails() {
-        // Sabotage add_option by pre-filling all possible keys... instead,
-        // we override the global to simulate failure. We'll use a special
-        // hook: temporarily redefine the options array to be read-only.
-        // Since our stub always succeeds, we test the wiring by verifying
-        // the return type contract.
+        global $_ses_test_fail_add_option;
+        $_ses_test_fail_add_option = true;
+
         $result = Queue::enqueue(array(
             'to'      => array('user@example.com'),
             'subject' => 'Test',
             'message' => 'Hello',
         ));
-        // With working stubs this should always succeed
-        $this->assertTrue($result);
+        $this->assertFalse($result, 'Enqueue should return false when DB write fails');
     }
 
     // --- Legacy worker path ---
@@ -166,6 +167,58 @@ class QueueTest extends TestCase {
             'ses_mailer_job_' . $job_id,
             $_ses_test_options,
             'Job should be discarded after max attempts'
+        );
+    }
+
+    // --- Schedule failure ---
+
+    public function test_enqueue_returns_false_when_schedule_fails() {
+        global $_ses_test_fail_schedule_single, $_ses_test_options;
+        $_ses_test_fail_schedule_single = true;
+
+        $result = Queue::enqueue(array(
+            'to'      => array('user@example.com'),
+            'subject' => 'Test',
+            'message' => 'Hello',
+        ));
+        $this->assertFalse($result, 'Enqueue should return false when scheduling fails');
+
+        // Job should have been cleaned up (not orphaned)
+        $found = false;
+        foreach ($_ses_test_options as $key => $val) {
+            if (strpos($key, 'ses_mailer_job_') === 0) {
+                $found = true;
+                break;
+            }
+        }
+        $this->assertFalse($found, 'Stored job should be deleted when scheduling fails');
+    }
+
+    // --- Invalid from-email should not orphan job ---
+
+    public function test_worker_deletes_job_on_invalid_from_email() {
+        global $_ses_test_options;
+
+        // Set an invalid from_email
+        $_ses_test_options[Options::OPTION]['from_email'] = 'not-an-email';
+
+        $job_id = 'test-invalid-from';
+        $_ses_test_options['ses_mailer_job_' . $job_id] = array(
+            'to'      => array('user@example.com'),
+            'subject' => 'Invalid from test',
+            'message' => 'Hello',
+            'headers' => array(),
+            'attachments' => array(),
+            'attempt' => 0,
+            'created_at' => time(),
+        );
+
+        Queue::worker(array('job_id' => $job_id));
+
+        $this->assertArrayNotHasKey(
+            'ses_mailer_job_' . $job_id,
+            $_ses_test_options,
+            'Job should be deleted when from-email is invalid'
         );
     }
 }

@@ -61,7 +61,9 @@ class SesClient {
         if ( $code === 200 ) return true;
         $body = wp_remote_retrieve_body($response);
         $msg = 'SES API error';
-        $xml = @simplexml_load_string($body);
+        $prev = libxml_use_internal_errors(true);
+        $xml = simplexml_load_string($body);
+        libxml_use_internal_errors($prev);
         if ( $xml && isset($xml->Error->Message) ) {
             $msg = (string) $xml->Error->Message;
         }
@@ -86,7 +88,9 @@ class SesClient {
         if ( $code !== 200 ) {
             return new WP_Error('ses_api_error', 'SES API error', array('status' => $code, 'body' => $body));
         }
-        $xml = @simplexml_load_string($body);
+        $prev = libxml_use_internal_errors(true);
+        $xml = simplexml_load_string($body);
+        libxml_use_internal_errors($prev);
         if ( ! $xml ) return new WP_Error('ses_parse_error', 'Unable to parse SES response.', array('body' => $body));
         $resNode = $xml->GetSendQuotaResult ?? null;
         if ( ! $resNode ) return new WP_Error('ses_parse_error', 'Unexpected SES response.', array('body' => $body));
