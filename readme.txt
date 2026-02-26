@@ -111,7 +111,7 @@ API Mailer for AWS SES is built and maintained by [beltoft.net](https://beltoft.
 = 1.4 =
 - New maintainer: beltoft.net.
 - Security: encrypt secret key at rest (AES-256-CBC), validate attachment paths against uploads/wp-content only.
-- Logging: replaced custom file logger with WooCommerce logger (falls back to error_log); removed Logs tab.
+- Logging: replaced custom file logger with WooCommerce logger (falls back to error_log); removed Logs tab. The old `wp-content/ses-mailer-logs/` directory is no longer used and can be safely deleted.
 - Queue: job persistence checks throughout, retry scheduling failure handling, delete-safe stale job cleanup.
 - Hardening: autoloader path sanitization, cron dedup lock, proper XML error handling, rate-limit via transients.
 - Added PHPUnit test suite with WordPress function stubs.
@@ -139,5 +139,7 @@ Initial public release.
 - wp-config credential mode
 
 == Upgrade Notice ==
+= 1.4 =
+Logging moved to WooCommerce logger / error_log. The `wp-content/ses-mailer-logs/` folder is no longer used and can be safely deleted after upgrading.
 = 1.0.0 =
 Initial release. Configure credentials and test your SES connection on the Status tab before enabling in production.
