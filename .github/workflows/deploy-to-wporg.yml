@@ -1,0 +1,30 @@
+name: Deploy to WordPress.org
+
+on:
+  push:
+    tags:
+      - '*'
+
+jobs:
+  deploy:
+    name: Deploy to WordPress.org
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: WordPress Plugin Deploy
+        id: deploy
+        uses: 10up/action-wordpress-plugin-deploy@stable
+        with:
+          generate-zip: true
+        env:
+          SVN_USERNAME: ${{ secrets.SVN_USERNAME }}
+          SVN_PASSWORD: ${{ secrets.SVN_PASSWORD }}
+          SLUG: api-mailer-for-aws-ses
+
+      - name: Upload release asset
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-mailer-for-aws-ses
+          path: ${{ steps.deploy.outputs.zip-path }}
