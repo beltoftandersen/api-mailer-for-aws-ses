@@ -11,6 +11,7 @@ use WP_Error;
 class Queue {
     const HOOK = 'ses_mailer_send_job';
     const JOB_OPTION_PREFIX = 'ses_mailer_job_';
+    private static $opts_cache = null;
 
     public static function init() {
         add_action(self::HOOK, [__CLASS__, 'worker'], 10, 1);
@@ -88,7 +89,7 @@ class Queue {
     }
 
     public static function worker($args) {
-        $opts = get_option(Options::OPTION, Options::defaults());
+        $opts = self::get_opts();
         if ( empty($opts['enable_mailer']) ) return;
 
         $loaded = null; $job_id = isset($args['job_id']) ? (string)$args['job_id'] : '';
@@ -273,10 +274,17 @@ class Queue {
     }
 
     private static function maybe_log($msg) {
-        $opts = get_option(Options::OPTION, Options::defaults());
+        $opts = self::get_opts();
         if ( empty($opts['disable_logging']) ) {
             LogViewer::log($msg);
         }
+    }
+
+    private static function get_opts() {
+        if ( self::$opts_cache === null ) {
+            self::$opts_cache = get_option(Options::OPTION, Options::defaults());
+        }
+        return self::$opts_cache;
     }
 
     private static function tag_str($tag) {

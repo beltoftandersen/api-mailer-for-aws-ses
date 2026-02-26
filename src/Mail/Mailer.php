@@ -338,15 +338,32 @@ class Mailer {
      */
     public static function attach_files($phpmailer, $attachments) {
         $uploads_dir = wp_get_upload_dir();
-        $allowed_bases = array();
-        if ( isset($uploads_dir['basedir']) ) {
-            $real = realpath($uploads_dir['basedir']);
-            if ( $real !== false ) $allowed_bases[] = $real;
+        $uploads_base = isset($uploads_dir['basedir']) ? (string) $uploads_dir['basedir'] : '';
+        $content_base = defined('WP_CONTENT_DIR') ? (string) WP_CONTENT_DIR : '';
+        $cache_key = $uploads_base . '|' . $content_base;
+
+        static $allowed_cache = array();
+        if ( ! isset($allowed_cache[$cache_key]) ) {
+            $allowed_bases = array();
+            if ( $uploads_base !== '' ) {
+                $real = realpath($uploads_base);
+                if ( $real !== false ) $allowed_bases[] = $real;
+            }
+            if ( $content_base !== '' ) {
+                $real = realpath($content_base);
+                if ( $real !== false ) $allowed_bases[] = $real;
+            }
+            $allowed_bases = array_values(array_unique($allowed_bases));
+            $allowed_prefixes = array();
+            foreach ( $allowed_bases as $base ) {
+                $allowed_prefixes[] = $base . DIRECTORY_SEPARATOR;
+            }
+            $allowed_cache[$cache_key] = array(
+                'bases'    => $allowed_bases,
+                'prefixes' => $allowed_prefixes,
+            );
         }
-        if ( defined('WP_CONTENT_DIR') ) {
-            $real = realpath(WP_CONTENT_DIR);
-            if ( $real !== false ) $allowed_bases[] = $real;
-        }
+        $allowed_prefixes = $allowed_cache[$cache_key]['prefixes'];
 
         $blocked = array();
         foreach ((array) $attachments as $path) {
@@ -364,8 +381,8 @@ class Mailer {
             // Reject symlink escapes: if the given path contains a symlink
             // that resolves outside allowed roots, realpath will reveal it
             $allowed = false;
-            foreach ( $allowed_bases as $base ) {
-                if ( strpos($real, $base . DIRECTORY_SEPARATOR) === 0 ) {
+            foreach ( $allowed_prefixes as $prefix ) {
+                if ( strpos($real, $prefix) === 0 ) {
                     $allowed = true;
                     break;
                 }
