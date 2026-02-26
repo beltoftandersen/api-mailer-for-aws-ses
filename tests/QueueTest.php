@@ -15,6 +15,11 @@ class QueueTest extends TestCase {
         $_ses_test_fail_update_option   = false;
         $_ses_test_fail_schedule_single = false;
 
+        // Reset Queue's static opts cache so each test sees fresh options
+        $ref = new ReflectionProperty(Queue::class, 'opts_cache');
+        $ref->setAccessible(true);
+        $ref->setValue(null, null);
+
         // Set up default plugin options
         $_ses_test_options[Options::OPTION] = array_merge(Options::defaults(), array(
             'enable_mailer'   => '1',
