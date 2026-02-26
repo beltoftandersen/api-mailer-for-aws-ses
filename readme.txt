@@ -18,7 +18,7 @@ The plugin focuses on correctness, performance, and operational clarity:
 - Direct AWS SigV4 signed requests to SES
 - Minimal overhead in the `wp_mail()` hook
 - Optional background queue with Action Scheduler or wp_cron fallback
-- Explicit logging with a production-safe disable switch
+- Optional logging via WooCommerce logger or PHP error_log
 - Clean, PSR-4 structured codebase
 
 === Key Features ===
@@ -28,16 +28,16 @@ The plugin focuses on correctness, performance, and operational clarity:
 4. Configurable rate limiting per second to stay under SES send rate.
 5. From/Reply-To handling with optional forced From and custom X-* headers.
 6. Test tab to send a test email and a Status tab to fetch SES GetSendQuota.
-7. Log viewer with success/failure entries and optional production disable.
+7. Logging via WooCommerce logger or PHP error_log, disabled by default.
 8. Credentials from wp-config (constants) or saved settings.
 9. Lightweight, minimal I/O, no Composer dependency.
-10. Uninstall cleanup toggle to remove settings and logs on deletion.
+10. Uninstall cleanup toggle to remove settings and queued jobs on deletion.
 
 === Why It's High Performance ===
 - Avoids SMTP for the send path; uses PHPMailer only for MIME construction, then sends via SES API directly.
 - Background queue returns control to the request immediately when enabled.
 - Job payloads are stored server-side and referenced by a small `job_id` to avoid large serialized cron arguments.
-- Logging is optional and trimmed automatically to keep I/O low.
+- Logging is optional and disabled by default to keep I/O low.
 
 == Installation ==
 1. Upload the plugin to `wp-content/plugins/` or install via the Plugins screen.
@@ -70,9 +70,8 @@ When this mode is enabled, the Access Key, Secret, and Region fields are cleared
 - A per-email pause is applied based on the configured send rate to avoid exceeding SES limits.
 
 === Logging ===
-- Success and failure entries are written to `wp-content/ses-mailer-logs/email-log.txt`.
-- Use the Logs tab to view or clear logs.
-- Enable “Disable logging in production” to avoid writing new entries.
+- When enabled, log entries route to WooCommerce Status → Logs (source: api-mailer-for-aws-ses) if WooCommerce is active, or to the PHP error log otherwise.
+- Logging is disabled by default. Uncheck "Disable logging" in settings to enable.
 
 === External Services ===
 - This plugin connects to Amazon Simple Email Service (AWS SES) at `https://email.{region}.amazonaws.com` to send email and to fetch sending quotas.
@@ -103,13 +102,19 @@ A: Yes. Use the wp-config constants and enable “Read AWS credentials from wp-c
 1. Settings screen with credential and queue options
 2. Test tab to send a test email
 3. Status tab showing SES send quotas
-4. Logs tab with recent entries
 
 == About the Author ==
 
 API Mailer for AWS SES is built and maintained by [beltoft.net](https://beltoft.net).
 
 == Changelog ==
+= 1.4 =
+- New maintainer: beltoft.net.
+- Security: encrypt secret key at rest (AES-256-CBC), validate attachment paths against uploads/wp-content only.
+- Logging: replaced custom file logger with WooCommerce logger (falls back to error_log); removed Logs tab.
+- Queue: job persistence checks throughout, retry scheduling failure handling, delete-safe stale job cleanup.
+- Hardening: autoloader path sanitization, cron dedup lock, proper XML error handling, rate-limit via transients.
+- Added PHPUnit test suite with WordPress function stubs.
 = 1.3 =
 - Use PHPMailer (bundled with WordPress) for MIME construction instead of manual MIME building; consistent with FluentSMTP and other major WP mailer plugins.
 - Auto-detect HTML content when plugins send HTML without explicit Content-Type header.
