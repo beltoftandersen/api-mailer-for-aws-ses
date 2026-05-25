@@ -2,7 +2,7 @@
 /**
  * Plugin Name: API Mailer for AWS SES
  * Description: Fast, lightweight WordPress mailer that sends via Amazon SES SendRawEmail API (no SMTP). Includes background queue, logging, and wp-config credentials.
- * Version: 1.4
+ * Version: 1.4.1
  * Author: beltoft.net
  * Author URI: https://beltoft.net
  * License: GPLv2 or later

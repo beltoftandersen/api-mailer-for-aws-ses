@@ -2,9 +2,9 @@
 Contributors: beltoftnet
 Tags: ses, email, aws, api, mailer
 Requires at least: 5.6
-Tested up to: 6.9
+Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 1.4
+Stable tag: 1.4.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -108,6 +108,8 @@ A: Yes. Use the wp-config constants and enable “Read AWS credentials from wp-c
 API Mailer for AWS SES is built and maintained by [beltoft.net](https://beltoft.net).
 
 == Changelog ==
+= 1.4.1 =
+- Tested with WordPress 7.0.
 = 1.4 =
 - New maintainer: beltoft.net.
 - Security: encrypt secret key at rest (AES-256-CBC), validate attachment paths against uploads/wp-content only.
