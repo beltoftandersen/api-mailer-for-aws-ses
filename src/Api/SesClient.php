@@ -40,7 +40,7 @@ class SesClient {
         $this->session_token = preg_replace('/\s+/', '', (string) $this->session_token);
 
         if ( ! Options::is_valid_region($this->region) ) { $this->region = ''; }
-        $this->endpoint = $this->region !== '' ? sprintf('https://email.%s.amazonaws.com', $this->region) : '';
+        $this->endpoint = $this->region !== '' ? sprintf('https://email.%s.amazonaws.com', $this->region) : ''; // phpcs:ignore PluginCheck.CodeAnalysis.Offloading.OffloadedContent -- SES API endpoint, not an asset.
     }
 
     public function send_raw_email($raw) {

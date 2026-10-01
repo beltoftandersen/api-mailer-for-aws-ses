@@ -111,7 +111,7 @@ class Queue {
         }
 
         $to = isset($loaded['to']) ? (array) $loaded['to'] : array();
-        $to = array_filter(array_map('sanitize_email', $to));
+        $to = Mailer::parse_recipients($to);
         if ( empty($to) ) { if ( is_string($job_id) && $job_id !== '' ) self::delete_job($job_id); return; }
 
         $subject = isset($loaded['subject']) ? (string) $loaded['subject'] : '';

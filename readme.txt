@@ -2,9 +2,9 @@
 Contributors: beltoftnet
 Tags: ses, email, aws, api, mailer
 Requires at least: 5.6
-Tested up to: 7.0
+Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.4.1
+Stable tag: 1.4.2
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -108,6 +108,10 @@ A: Yes. Use the wp-config constants and enable “Read AWS credentials from wp-c
 API Mailer for AWS SES is built and maintained by [beltoft.net](https://beltoft.net).
 
 == Changelog ==
+= 1.4.2 =
+- Tested with WordPress 7.1.
+- Fix: failed sends now return false and fire `wp_mail_failed`; successful sends fire `wp_mail_succeeded`.
+- Fix: "Name <email>" recipients are no longer mangled.
 = 1.4.1 =
 - Tested with WordPress 7.0.
 = 1.4 =
@@ -141,6 +145,8 @@ Initial public release.
 - wp-config credential mode
 
 == Upgrade Notice ==
+= 1.4.2 =
+Fixes failed sends being reported as successful and "Name <email>" recipients. Tested with WordPress 7.1.
 = 1.4 =
 Logging moved to WooCommerce logger / error_log. The `wp-content/ses-mailer-logs/` folder is no longer used and can be safely deleted after upgrading.
 = 1.0.0 =

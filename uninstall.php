@@ -1,7 +1,7 @@
 <?php
 if ( ! defined('WP_UNINSTALL_PLUGIN') ) { exit; }
 
-function ses_mailer_uninstall() {
+( static function () {
     $opts = get_option('ses_mailer_options');
     $cleanup = is_array($opts) && isset($opts['cleanup_on_uninstall']) && ($opts['cleanup_on_uninstall'] === '1' || $opts['cleanup_on_uninstall'] === 1);
 
@@ -25,6 +25,4 @@ function ses_mailer_uninstall() {
     // Clean up scheduled cron events
     wp_clear_scheduled_hook('ses_mailer_send_job');
     wp_clear_scheduled_hook('ses_mailer_cleanup_jobs');
-}
-
-ses_mailer_uninstall();
+} )();

@@ -5,8 +5,8 @@ optional background queueing.
 
 **[Download on WordPress.org](https://wordpress.org/plugins/api-mailer-for-aws-ses/)**
 
-- Stable version: 1.4.1
-- Requires: WordPress 5.6+, PHP 7.4+ (tested up to WordPress 7.0)
+- Stable version: 1.4.2
+- Requires: WordPress 5.6+, PHP 7.4+ (tested up to WordPress 7.1)
 - Author: beltoft.net
 - Text domain: api-mailer-for-aws-ses
 
@@ -124,6 +124,12 @@ The plugin pauses between sends based on the configured per-second rate to help 
 - Compiled binary: languages/api-mailer-for-aws-ses-da_DK.mo
 
 ## Changelog
+
+### 1.4.2
+
+- Tested with WordPress 7.1.
+- Fix: failed sends now return false and fire `wp_mail_failed`; successful sends fire `wp_mail_succeeded`.
+- Fix: "Name <email>" recipients are no longer mangled.
 
 ### 1.4.1
 

@@ -82,9 +82,69 @@ class Mailer {
         set_transient($key, microtime(true), 60);
     }
 
+    /**
+     * pre_wp_mail handler. Returns a boolean like core wp_mail() and fires
+     * wp_mail_succeeded / wp_mail_failed so other plugins see the outcome.
+     */
     public function send($pre, $atts) {
         if ( empty($this->opts['enable_mailer']) ) return $pre;
 
+        $result = $this->deliver($atts);
+
+        $mail_data = array_intersect_key(
+            wp_parse_args($atts, array('to' => array(), 'subject' => '', 'message' => '', 'headers' => array(), 'attachments' => array())),
+            array_flip(array('to', 'subject', 'message', 'headers', 'attachments'))
+        );
+
+        if ( is_wp_error($result) ) {
+            $data = $result->get_error_data();
+            do_action('wp_mail_failed', new WP_Error( // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- core hook.
+                $result->get_error_code(),
+                $result->get_error_message(),
+                array_merge($mail_data, is_array($data) ? $data : array())
+            ));
+            return false;
+        }
+
+        do_action('wp_mail_succeeded', $mail_data); // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- core hook.
+        return true;
+    }
+
+    /**
+     * Parse wp_mail() recipients into validated "addr" or "Name <addr>" strings.
+     *
+     * @param string|array $to
+     * @return string[]
+     */
+    public static function parse_recipients($to) {
+        if ( ! is_array($to) ) $to = explode(',', (string) $to);
+        $out = array();
+        foreach ( $to as $raw ) {
+            $raw = trim(str_replace(array("\r", "\n"), '', (string) $raw));
+            if ( $raw === '' ) continue;
+            list($email, $name) = self::split_address($raw);
+            if ( ! is_email($email) ) continue;
+            $out[] = $name !== '' ? $name . ' <' . $email . '>' : $email;
+        }
+        return $out;
+    }
+
+    /**
+     * Split "Name <addr>" into [addr, name]; a bare address returns [addr, ''].
+     */
+    private static function split_address($raw) {
+        if ( preg_match('/(.*)<(.+)>/', $raw, $m) ) {
+            return array(trim($m[2]), trim($m[1], " \t\"'"));
+        }
+        return array(trim($raw), '');
+    }
+
+    /**
+     * Send (or enqueue) the message.
+     *
+     * @return true|WP_Error
+     */
+    private function deliver($atts) {
         // If background sending is enabled, enqueue and short-circuit
         if ( ! empty($this->opts['background_send']) ) {
             $atts = wp_parse_args($atts, array(
@@ -94,9 +154,7 @@ class Mailer {
                 'headers'     => array(),
                 'attachments' => array(),
             ));
-            $to = $atts['to'];
-            if ( is_string($to) ) $to = array_map('trim', explode(',', $to));
-            $to = array_filter(array_map('sanitize_email', (array) $to));
+            $to = self::parse_recipients($atts['to']);
             if ( empty($to) ) return new WP_Error('ses_to_missing', 'No recipient.');
             $headers = is_array($atts['headers']) ? $atts['headers'] : array_filter(
                 array_map('trim', explode("\n", str_replace("\r", "\n", (string) $atts['headers'])))
@@ -122,9 +180,7 @@ class Mailer {
             'attachments' => array(),
         ));
 
-        $to = $atts['to'];
-        if ( is_string($to) ) $to = array_map('trim', explode(',', $to));
-        $to = array_filter(array_map('sanitize_email', (array) $to));
+        $to = self::parse_recipients($atts['to']);
         if ( empty($to) ) return new WP_Error('ses_to_missing', 'No recipient.');
 
         $headers = is_array($atts['headers']) ? $atts['headers'] : array_filter(
@@ -187,7 +243,8 @@ class Mailer {
         } else {
             LogViewer::log(sprintf('FAIL to=%s subject="%s" code=%s status=%s msg="%s"%s', $to_header, mb_substr($subject, 0, 120), $code, $status, mb_substr($msg, 0, 200), $hint));
         }
-        return $err;
+        // Already logged above; tell log_failure() to skip it.
+        return new WP_Error($code, $msg, array_merge(is_array($data) ? $data : array(), array('ses_mailer_logged' => true)));
     }
 
     /**
@@ -214,9 +271,9 @@ class Mailer {
             $phpmailer->setFrom($from_email, $from_name);
 
             foreach ((array) $to as $addr) {
-                $addr = trim($addr);
-                if ( $addr !== '' ) {
-                    $phpmailer->addAddress($addr);
+                list($email, $name) = self::split_address(trim((string) $addr));
+                if ( $email !== '' ) {
+                    $phpmailer->addAddress($email, $name);
                 }
             }
 
@@ -421,6 +478,7 @@ class Mailer {
             $code = $wp_error->get_error_code();
             $msg  = $wp_error->get_error_message();
             $data = $wp_error->get_error_data();
+            if ( is_array($data) && ! empty($data['ses_mailer_logged']) ) return;
             $status = is_array($data) && isset($data['status']) ? (string)$data['status'] : '';
             LogViewer::log(sprintf('WP_MAIL_FAILED code=%s status=%s msg="%s"', $code, $status, mb_substr($msg, 0, 200)));
         }
