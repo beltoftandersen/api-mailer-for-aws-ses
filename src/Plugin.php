@@ -9,6 +9,7 @@ use SesMailer\Background\Queue;
 
 class Plugin {
     public static function init() {
+        \SesMailer\Support\Options::maybe_upgrade_secret();
         AdminPage::init();
         LogViewer::init();
         Queue::init();

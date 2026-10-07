@@ -2,7 +2,9 @@
 /**
  * Plugin Name: API Mailer for AWS SES
  * Description: Fast, lightweight WordPress mailer that sends via Amazon SES SendRawEmail API (no SMTP). Includes background queue, logging, and wp-config credentials.
- * Version: 1.4.2
+ * Version: 1.5
+ * Requires at least: 5.7
+ * Requires PHP: 7.4
  * Author: beltoft.net
  * Author URI: https://beltoft.net
  * License: GPLv2 or later
@@ -23,7 +25,7 @@ spl_autoload_register(function ($class) {
 
 define('SES_MAILER_PATH', plugin_dir_path(__FILE__));
 define('SES_MAILER_URL',  plugin_dir_url(__FILE__));
-define('SES_MAILER_VER',  '1.4.2');
+define('SES_MAILER_VER',  '1.5');
 
 register_activation_hook(__FILE__, function () {
     $option = \SesMailer\Support\Options::OPTION;
@@ -38,8 +40,9 @@ add_action('plugins_loaded', function () {
 });
 
 register_deactivation_hook(__FILE__, function () {
-    wp_clear_scheduled_hook('ses_mailer_send_job');
-    wp_clear_scheduled_hook('ses_mailer_cleanup_jobs');
+    // Job events carry a job_id argument, so clear the hook regardless of args.
+    wp_unschedule_hook('ses_mailer_send_job');
+    wp_unschedule_hook('ses_mailer_cleanup_jobs');
 });
 
 // Add "Settings" link on the Plugins listing for this plugin only

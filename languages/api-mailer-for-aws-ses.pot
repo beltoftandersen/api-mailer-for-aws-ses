@@ -1,0 +1,277 @@
+# Copyright (C) 2026 beltoft.net
+# This file is distributed under the GPLv2 or later.
+msgid ""
+msgstr ""
+"Project-Id-Version: API Mailer for AWS SES 1.5\n"
+"Report-Msgid-Bugs-To: https://wordpress.org/support/plugin/api-mailer-for-aws-ses\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"POT-Creation-Date: 2026-10-07T04:25:20+00:00\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"X-Generator: WP-CLI 2.12.0\n"
+"X-Domain: api-mailer-for-aws-ses\n"
+
+#. Plugin Name of the plugin
+#: ses-mailer.php
+#: src/Admin/AdminPage.php:21
+#: src/Admin/AdminPage.php:22
+#: src/Admin/AdminPage.php:79
+msgid "API Mailer for AWS SES"
+msgstr ""
+
+#. Description of the plugin
+#: ses-mailer.php
+msgid "Fast, lightweight WordPress mailer that sends via Amazon SES SendRawEmail API (no SMTP). Includes background queue, logging, and wp-config credentials."
+msgstr ""
+
+#. Author of the plugin
+#: ses-mailer.php
+msgid "beltoft.net"
+msgstr ""
+
+#. Author URI of the plugin
+#: ses-mailer.php
+msgid "https://beltoft.net"
+msgstr ""
+
+#: ses-mailer.php:51
+#: src/Admin/AdminPage.php:84
+msgid "Settings"
+msgstr ""
+
+#: src/Admin/AdminPage.php:43
+msgid "Amazon SES API Settings"
+msgstr ""
+
+#: src/Admin/AdminPage.php:45
+msgid "This plugin sends email via Amazon SES API. SMTP is not used."
+msgstr ""
+
+#: src/Admin/AdminPage.php:50
+msgid "Enable Mailer (use SES API)"
+msgstr ""
+
+#: src/Admin/AdminPage.php:51
+msgid "Access Key ID"
+msgstr ""
+
+#: src/Admin/AdminPage.php:51
+msgid "Your AWS Access Key ID"
+msgstr ""
+
+#: src/Admin/AdminPage.php:52
+msgid "Secret Access Key"
+msgstr ""
+
+#: src/Admin/AdminPage.php:53
+#: src/Admin/AdminPage.php:187
+msgid "Region"
+msgstr ""
+
+#: src/Admin/AdminPage.php:54
+msgid "From Email (verified in SES)"
+msgstr ""
+
+#: src/Admin/AdminPage.php:55
+msgid "From Name"
+msgstr ""
+
+#: src/Admin/AdminPage.php:56
+msgid "Reply-To Email"
+msgstr ""
+
+#: src/Admin/AdminPage.php:57
+msgid "Force From on all emails"
+msgstr ""
+
+#: src/Admin/AdminPage.php:58
+msgid "Rate Limit (per second)"
+msgstr ""
+
+#: src/Admin/AdminPage.php:59
+msgid "Custom Headers (X-*, one per line)"
+msgstr ""
+
+#: src/Admin/AdminPage.php:61
+msgid "When enabled, logs appear in WooCommerce -> Status -> Logs (source: api-mailer-for-aws-ses)."
+msgstr ""
+
+#: src/Admin/AdminPage.php:62
+msgid "When enabled, logs are written to the PHP error log (typically wp-content/debug.log)."
+msgstr ""
+
+#: src/Admin/AdminPage.php:63
+msgid "Disable logging"
+msgstr ""
+
+#: src/Admin/AdminPage.php:64
+msgid "Send emails in background (queue)"
+msgstr ""
+
+#: src/Admin/AdminPage.php:65
+msgid "Clean up plugin data on deletion"
+msgstr ""
+
+#: src/Admin/AdminPage.php:66
+msgid "Read AWS credentials from wp-config"
+msgstr ""
+
+#: src/Admin/AdminPage.php:73
+msgid "You do not have sufficient permissions to access this page."
+msgstr ""
+
+#: src/Admin/AdminPage.php:88
+msgid "Test"
+msgstr ""
+
+#: src/Admin/AdminPage.php:92
+msgid "Status"
+msgstr ""
+
+#: src/Admin/AdminPage.php:108
+msgid "Save Settings"
+msgstr ""
+
+#: src/Admin/AdminPage.php:118
+msgid "An error occurred while sending. Check logs for details."
+msgstr ""
+
+#: src/Admin/AdminPage.php:119
+msgid "Failed to send test email:"
+msgstr ""
+
+#: src/Admin/AdminPage.php:123
+msgid "Test email queued. It will be sent in the background."
+msgstr ""
+
+#: src/Admin/AdminPage.php:125
+msgid "Test email sent!"
+msgstr ""
+
+#: src/Admin/AdminPage.php:128
+msgid "Failed to send test email. Check logs for details."
+msgstr ""
+
+#: src/Admin/AdminPage.php:133
+msgid "Send a test email to:"
+msgstr ""
+
+#: src/Admin/AdminPage.php:135
+msgid "Send Test"
+msgstr ""
+
+#: src/Admin/AdminPage.php:145
+msgid "Could not connect to SES. Check logs for details."
+msgstr ""
+
+#: src/Admin/AdminPage.php:146
+msgid "SES Connection Failed:"
+msgstr ""
+
+#: src/Admin/AdminPage.php:155
+msgid "SES Connection Successful"
+msgstr ""
+
+#: src/Admin/AdminPage.php:165
+msgid "Configuration Status"
+msgstr ""
+
+#: src/Admin/AdminPage.php:175
+msgid "Access Key (wp-config/env)"
+msgstr ""
+
+#: src/Admin/AdminPage.php:176
+msgid "Secret Key (wp-config/env)"
+msgstr ""
+
+#: src/Admin/AdminPage.php:177
+msgid "Region (wp-config/env)"
+msgstr ""
+
+#: src/Admin/AdminPage.php:179
+msgid "Access Key"
+msgstr ""
+
+#: src/Admin/AdminPage.php:181
+#: src/Admin/AdminPage.php:185
+msgid "Secret Key"
+msgstr ""
+
+#: src/Admin/AdminPage.php:183
+msgid "Secret Key cannot be decrypted (WordPress salts may have changed). Please re-enter it."
+msgstr ""
+
+#: src/Admin/AdminPage.php:190
+msgid "From Email"
+msgstr ""
+
+#: src/Admin/AdminPage.php:194
+#: src/Admin/AdminPage.php:196
+msgid "Background Sending"
+msgstr ""
+
+#: src/Admin/AdminPage.php:199
+msgid "Logging is disabled"
+msgstr ""
+
+#: src/Admin/AdminPage.php:205
+msgid "Test SES Connection"
+msgstr ""
+
+#: src/Admin/AdminPage.php:210
+msgid "Max 24 Hour Send"
+msgstr ""
+
+#: src/Admin/AdminPage.php:211
+msgid "Max Send Rate (per sec)"
+msgstr ""
+
+#: src/Admin/AdminPage.php:212
+msgid "Sent Last 24 Hours"
+msgstr ""
+
+#: src/Admin/AdminPage.php:237
+#: src/Admin/AdminPage.php:250
+msgid "Using credentials from wp-config."
+msgstr ""
+
+#: src/Admin/AdminPage.php:248
+msgid "Your AWS Secret Access Key"
+msgstr ""
+
+#: src/Admin/AdminPage.php:252
+msgid "A secret is stored. Leave as •••• to keep, clear to remove."
+msgstr ""
+
+#: src/Admin/AdminPage.php:252
+msgid "No secret stored yet."
+msgstr ""
+
+#: src/Admin/AdminPage.php:286
+msgid "Select a region…"
+msgstr ""
+
+#: src/Admin/AdminPage.php:294
+msgid "Using region from wp-config."
+msgstr ""
+
+#: src/Logging/LogViewer.php:37
+msgid "Email Logs"
+msgstr ""
+
+#: src/Logging/LogViewer.php:40
+msgid "Logging is disabled. Enable it in Settings to record email activity."
+msgstr ""
+
+#. translators: %s: URL to WooCommerce logs
+#: src/Logging/LogViewer.php:49
+#, php-format
+msgid "Logs are written to <a href=\"%s\">WooCommerce &rarr; Status &rarr; Logs</a> under source <code>api-mailer-for-aws-ses</code>."
+msgstr ""
+
+#: src/Logging/LogViewer.php:55
+msgid "WooCommerce is not active. Logs are written to the PHP error log (typically wp-content/debug.log)."
+msgstr ""

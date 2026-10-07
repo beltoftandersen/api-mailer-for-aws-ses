@@ -177,7 +177,13 @@ class AdminPage {
             echo '<li>' . ($rg_ok ? '✅ ' : '❌ ') . esc_html__('Region (wp-config/env)', 'api-mailer-for-aws-ses') . '</li>';
         } else {
             echo '<li>' . (!empty($opts['access_key']) ? '✅ ' : '❌ ') . esc_html__('Access Key', 'api-mailer-for-aws-ses') . '</li>';
-            echo '<li>' . (!empty($opts['secret_key']) ? '✅ ' : '❌ ') . esc_html__('Secret Key', 'api-mailer-for-aws-ses') . '</li>';
+            if ( empty($opts['secret_key']) ) {
+                echo '<li>❌ ' . esc_html__('Secret Key', 'api-mailer-for-aws-ses') . '</li>';
+            } elseif ( Options::decrypt_secret($opts['secret_key']) === '' ) {
+                echo '<li>❌ ' . esc_html__('Secret Key cannot be decrypted (WordPress salts may have changed). Please re-enter it.', 'api-mailer-for-aws-ses') . '</li>';
+            } else {
+                echo '<li>✅ ' . esc_html__('Secret Key', 'api-mailer-for-aws-ses') . '</li>';
+            }
             echo '<li>' . (Options::is_valid_region($opts['region']) ? '✅ ' : '❌ ') . esc_html__('Region', 'api-mailer-for-aws-ses') . '</li>';
         }
         $from = !empty($opts['from_email']) ? $opts['from_email'] : get_option('admin_email');

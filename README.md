@@ -5,15 +5,15 @@ optional background queueing.
 
 **[Download on WordPress.org](https://wordpress.org/plugins/api-mailer-for-aws-ses/)**
 
-- Stable version: 1.4.2
-- Requires: WordPress 5.6+, PHP 7.4+ (tested up to WordPress 7.1)
+- Stable version: 1.5
+- Requires: WordPress 5.7+, PHP 7.4+ (tested up to WordPress 7.1)
 - Author: beltoft.net
 - Text domain: api-mailer-for-aws-ses
 
 ## Overview
 
 This plugin integrates WordPress with Amazon Simple Email Service (SES) by signing and sending requests directly to the SES SendRawEmail
-API (AWS SigV4). It avoids SMTP and PHPMailer on the hot path, reducing latency and improving reliability.
+API (AWS SigV4). There is no SMTP layer: PHPMailer only builds the message, which is then sent straight to the SES API.
 
 ## Features
 
@@ -21,7 +21,7 @@ API (AWS SigV4). It avoids SMTP and PHPMailer on the hot path, reducing latency 
 - Background sending queue with Action Scheduler or wp_cron fallback
 - Small cron/action payloads via job_id indirection (payload stored server-side)
 - Configurable send rate limiting to respect SES quotas
-- From/Reply-To management with optional forced From and custom X-* headers
+- wp_mail() compatible: all headers (incl. List-Unsubscribe), attachments, inline images, phpmailer_init
 - Test tab (send a test email) and Status tab (fetch SES GetSendQuota)
 - Logging via WooCommerce logger or PHP error_log, disabled by default
 - Credentials from wp-config.php (constants) or saved settings
@@ -37,7 +37,7 @@ API (AWS SigV4). It avoids SMTP and PHPMailer on the hot path, reducing latency 
 
 ## Requirements
 
-- WordPress 5.6 or newer
+- WordPress 5.7 or newer
 - PHP 7.4 or newer
 - An active Amazon SES account with a verified sender/identity
 
@@ -124,6 +124,15 @@ The plugin pauses between sends based on the configured per-second rate to help 
 - Compiled binary: languages/api-mailer-for-aws-ses-da_DK.mo
 
 ## Changelog
+
+### 1.5
+
+- Respect plugins that block emails.
+- Keep List-Unsubscribe and other custom headers.
+- Support inline images, named attachments and phpmailer_init.
+- Other From addresses now go to Reply-To.
+- Background queue keeps attachments and content type.
+- Stronger secret key encryption. Re-enter the key if you downgrade.
 
 ### 1.4.2
 

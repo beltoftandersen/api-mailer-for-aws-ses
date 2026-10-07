@@ -70,8 +70,8 @@ class AttachmentTest extends TestCase {
         $phpmailer->expects($this->never())->method('addAttachment');
 
         $blocked = Mailer::attach_files($phpmailer, array('', '  '));
-        // Empty string skipped (not counted as blocked), whitespace-only will fail realpath
-        $this->assertCount(1, $blocked); // '  ' is blocked (realpath fails)
+        // Empty and whitespace-only paths are skipped, not counted as blocked
+        $this->assertCount(0, $blocked);
     }
 
     public function test_blocks_symlink_escape() {
@@ -107,6 +107,42 @@ class AttachmentTest extends TestCase {
         $blocked = Mailer::attach_files($phpmailer, array($allowed, $denied));
         $this->assertCount(1, $blocked);
         $this->assertContains($denied, $blocked);
+    }
+
+    public function test_allows_file_in_temp_dir() {
+        $file = get_temp_dir() . 'ses-test-temp.txt';
+        file_put_contents($file, 'tmp');
+
+        $phpmailer = $this->createMock(MockPHPMailer::class);
+        $phpmailer->expects($this->once())->method('addAttachment');
+
+        $blocked = Mailer::attach_files($phpmailer, array($file));
+        unlink($file);
+        $this->assertEmpty($blocked, 'File in the WordPress temp dir should be allowed');
+    }
+
+    public function test_uses_array_key_as_attachment_name() {
+        $file = $this->uploads_dir . '/x123.txt';
+        file_put_contents($file, 'named');
+
+        $phpmailer = $this->createMock(MockPHPMailer::class);
+        $phpmailer->expects($this->once())->method('addAttachment')
+            ->with(realpath($file), 'invoice.txt');
+
+        Mailer::attach_files($phpmailer, array('invoice.txt' => $file));
+    }
+
+    public function test_accepts_newline_separated_string() {
+        $a = $this->uploads_dir . '/one.txt';
+        $b = $this->uploads_dir . '/two.txt';
+        file_put_contents($a, '1');
+        file_put_contents($b, '2');
+
+        $phpmailer = $this->createMock(MockPHPMailer::class);
+        $phpmailer->expects($this->exactly(2))->method('addAttachment');
+
+        $blocked = Mailer::attach_files($phpmailer, $a . "\r\n" . $b);
+        $this->assertEmpty($blocked);
     }
 }
 

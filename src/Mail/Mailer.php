@@ -6,8 +6,14 @@ use WP_Error;
 use SesMailer\Api\SesClient;
 use SesMailer\Support\Options;
 use SesMailer\Logging\LogViewer;
+use SesMailer\Background\Queue;
 
 class Mailer {
+    /**
+     * Headers handled explicitly or set by PHPMailer itself; never passed through as custom headers.
+     */
+    const RESERVED_HEADERS = array('from', 'to', 'subject', 'cc', 'bcc', 'reply-to', 'content-type', 'mime-version', 'x-mailer', 'date', 'message-id', 'content-transfer-encoding');
+
     private $opts;
 
     public function __construct() {
@@ -35,6 +41,8 @@ class Mailer {
     }
 
     public function normalize($args) {
+        if ( empty($this->opts['enable_mailer']) ) return $args;
+
         $args = wp_parse_args($args, array(
             'to'          => array(),
             'subject'     => '',
@@ -42,14 +50,8 @@ class Mailer {
             'headers'     => array(),
             'attachments' => array(),
         ));
-        if ( ! is_array($args['headers']) ) {
-            $headers = array();
-            foreach ( explode("\n", str_replace("\r", "\n", (string) $args['headers'])) as $line ) {
-                $line = trim($line);
-                if ($line !== '') $headers[] = $line;
-            }
-            $args['headers'] = $headers;
-        }
+        $args['headers'] = self::header_lines($args['headers']);
+
         $reply_to = isset($this->opts['reply_to']) ? trim($this->opts['reply_to']) : '';
         if ( is_email($reply_to) ) {
             $has = false;
@@ -87,13 +89,15 @@ class Mailer {
      * wp_mail_succeeded / wp_mail_failed so other plugins see the outcome.
      */
     public function send($pre, $atts) {
+        // Another plugin already decided (e.g. blocked the email): respect it.
+        if ( null !== $pre ) return $pre;
         if ( empty($this->opts['enable_mailer']) ) return $pre;
 
         $result = $this->deliver($atts);
 
         $mail_data = array_intersect_key(
-            wp_parse_args($atts, array('to' => array(), 'subject' => '', 'message' => '', 'headers' => array(), 'attachments' => array())),
-            array_flip(array('to', 'subject', 'message', 'headers', 'attachments'))
+            wp_parse_args($atts, self::atts_defaults()),
+            self::atts_defaults()
         );
 
         if ( is_wp_error($result) ) {
@@ -108,6 +112,17 @@ class Mailer {
 
         do_action('wp_mail_succeeded', $mail_data); // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- core hook.
         return true;
+    }
+
+    private static function atts_defaults() {
+        return array(
+            'to'          => array(),
+            'subject'     => '',
+            'message'     => '',
+            'headers'     => array(),
+            'attachments' => array(),
+            'embeds'      => array(),
+        );
     }
 
     /**
@@ -140,83 +155,201 @@ class Mailer {
     }
 
     /**
+     * Turn wp_mail() headers (string or array) into a list of trimmed lines.
+     */
+    public static function header_lines($headers) {
+        if ( ! is_array($headers) ) {
+            $headers = explode("\n", str_replace("\r", "\n", (string) $headers));
+        }
+        return array_values(array_filter(array_map(function ($h) {
+            return trim(str_replace(array("\r", "\n"), '', (string) $h));
+        }, $headers), 'strlen'));
+    }
+
+    /**
+     * Normalize wp_mail() attachments/embeds (string or array) into a list of
+     * array('path' => ..., 'name' => ...). String keys are kept as the name
+     * (attachments) or Content-ID (embeds), like core.
+     */
+    public static function normalize_files($files) {
+        if ( ! is_array($files) ) {
+            $files = explode("\n", str_replace("\r\n", "\n", (string) $files));
+        }
+        $out = array();
+        foreach ( $files as $key => $file ) {
+            if ( is_array($file) ) {
+                $path = isset($file['path']) ? (string) $file['path'] : '';
+                $name = isset($file['name']) ? (string) $file['name'] : '';
+            } else {
+                $path = (string) $file;
+                $name = is_string($key) ? $key : '';
+            }
+            $path = trim($path);
+            if ( $path === '' ) continue;
+            $out[] = array('path' => $path, 'name' => $name);
+        }
+        return $out;
+    }
+
+    /**
+     * Extract the X-SES-Mailer-Tag header value for logging.
+     */
+    public static function extract_tag($headers) {
+        foreach ( (array) $headers as $h ) {
+            $line = trim(str_replace(array("\r", "\n"), '', (string) $h));
+            if ( stripos($line, 'x-ses-mailer-tag:') === 0 ) {
+                return preg_replace('/[^A-Za-z0-9._-]/', '', trim(substr($line, strlen('x-ses-mailer-tag:'))));
+            }
+        }
+        return '';
+    }
+
+    /**
+     * Resolve everything that depends on request-time state (filters, settings)
+     * into a self-contained mail array that build_mime() and the queue can use.
+     *
+     * @return array|WP_Error
+     */
+    private function prepare($atts) {
+        $atts = wp_parse_args($atts, self::atts_defaults());
+
+        $to = self::parse_recipients($atts['to']);
+        if ( empty($to) ) return new WP_Error('ses_to_missing', 'No recipient.');
+
+        $headers = self::header_lines($atts['headers']);
+
+        $hdr_from_email = '';
+        $hdr_from_name  = '';
+        $content_type   = '';
+        $charset        = '';
+        foreach ( $headers as $line ) {
+            if ( strpos($line, ':') === false ) continue;
+            list($name, $value) = array_map('trim', explode(':', $line, 2));
+            switch ( strtolower($name) ) {
+                case 'from':
+                    list($hdr_from_email, $hdr_from_name) = self::split_address($value);
+                    break;
+                case 'content-type':
+                    $parts = array_map('trim', explode(';', $value));
+                    $content_type = strtolower($parts[0]);
+                    foreach ( array_slice($parts, 1) as $param ) {
+                        if ( stripos($param, 'charset=') === 0 ) {
+                            $charset = trim(substr($param, 8), " \t\"'");
+                        }
+                    }
+                    break;
+            }
+        }
+
+        list($from_email, $from_name, $replaced) = $this->resolve_from($hdr_from_email, $hdr_from_name);
+        if ( ! is_email($from_email) ) return new WP_Error('ses_from_invalid', 'Configured From Email is invalid or missing.');
+
+        // If the requested sender was swapped for the configured one, let replies still reach it.
+        if ( $replaced !== '' ) {
+            $has_reply_to = false;
+            foreach ( $headers as $line ) { if ( stripos($line, 'reply-to:') === 0 ) { $has_reply_to = true; break; } }
+            if ( ! $has_reply_to ) $headers[] = 'Reply-To: ' . $replaced;
+        }
+
+        // Only text/plain and text/html are built by this plugin; anything else falls back to text/plain.
+        if ( $content_type !== 'text/html' ) $content_type = 'text/plain';
+        // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- core filter.
+        $filtered = apply_filters('wp_mail_content_type', $content_type);
+        if ( is_string($filtered) && stripos($filtered, 'text/html') !== false ) $content_type = 'text/html';
+
+        $message = (string) $atts['message'];
+        // Auto-detect a full HTML document when no type was set.
+        if ( $content_type === 'text/plain' ) {
+            $trimmed = ltrim($message);
+            if ( stripos($trimmed, '<!doctype') === 0 || stripos($trimmed, '<html') === 0 ) {
+                $content_type = 'text/html';
+            }
+        }
+
+        if ( $charset === '' ) $charset = get_bloginfo('charset');
+        // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- core filter.
+        $charset = (string) apply_filters('wp_mail_charset', $charset);
+
+        return array(
+            'to'           => $to,
+            'subject'      => (string) $atts['subject'],
+            'message'      => $message,
+            'headers'      => $headers,
+            'attachments'  => self::normalize_files($atts['attachments']),
+            'embeds'       => self::normalize_files($atts['embeds']),
+            'from_email'   => $from_email,
+            'from_name'    => $from_name,
+            'content_type' => $content_type,
+            'charset'      => $charset !== '' ? $charset : 'UTF-8',
+        );
+    }
+
+    /**
+     * Pick the From name/address the way core does (From header, then the
+     * wp_mail_from / wp_mail_from_name filters), with the configured sender
+     * as the default. SES only sends from verified identities, so any other
+     * address is replaced by the configured From Email unless the
+     * ses_mailer_allow_from filter returns true for it.
+     *
+     * @return array [email, name, replaced address or '']
+     */
+    private function resolve_from($hdr_email, $hdr_name) {
+        $default_email = isset($this->opts['from_email']) ? trim($this->opts['from_email']) : '';
+        if ( ! is_email($default_email) ) $default_email = get_option('admin_email');
+        $default_name = isset($this->opts['from_name']) ? trim($this->opts['from_name']) : '';
+        if ( $default_name === '' ) $default_name = get_bloginfo('name');
+
+        $email = is_email($hdr_email) ? $hdr_email : $default_email;
+        $name  = $hdr_name !== '' ? $hdr_name : $default_name;
+        // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- core filter.
+        $email = trim((string) apply_filters('wp_mail_from', $email));
+        // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- core filter.
+        $name  = trim((string) apply_filters('wp_mail_from_name', $name));
+
+        $replaced = '';
+        if ( ! is_email($email) ) {
+            $email = $default_email;
+        } elseif ( ! self::from_allowed($email, $default_email) ) {
+            $replaced = $email;
+            $email = $default_email;
+        }
+        return array($email, $name, $replaced);
+    }
+
+    private static function from_allowed($email, $configured) {
+        if ( strcasecmp((string) $email, (string) $configured) === 0 ) return true;
+        // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- ses_mailer_ is this plugin's prefix (options, cron hooks).
+        return (bool) apply_filters('ses_mailer_allow_from', false, $email);
+    }
+
+    /**
      * Send (or enqueue) the message.
      *
      * @return true|WP_Error
      */
     private function deliver($atts) {
-        // If background sending is enabled, enqueue and short-circuit
+        $mail = $this->prepare($atts);
+        if ( is_wp_error($mail) ) return $mail;
+
         if ( ! empty($this->opts['background_send']) ) {
-            $atts = wp_parse_args($atts, array(
-                'to'          => array(),
-                'subject'     => '',
-                'message'     => '',
-                'headers'     => array(),
-                'attachments' => array(),
-            ));
-            $to = self::parse_recipients($atts['to']);
-            if ( empty($to) ) return new WP_Error('ses_to_missing', 'No recipient.');
-            $headers = is_array($atts['headers']) ? $atts['headers'] : array_filter(
-                array_map('trim', explode("\n", str_replace("\r", "\n", (string) $atts['headers'])))
-            );
-            $queued = \SesMailer\Background\Queue::enqueue(array(
-                'to'          => $to,
-                'subject'     => (string) $atts['subject'],
-                'message'     => (string) $atts['message'],
-                'headers'     => $headers,
-                'attachments' => (array) $atts['attachments'],
-            ));
-            if ( $queued === false ) {
+            if ( Queue::enqueue($mail) === false ) {
                 return new WP_Error('ses_queue_failed', 'Failed to store email in background queue.');
             }
             return true;
         }
 
-        $atts = wp_parse_args($atts, array(
-            'to'          => array(),
-            'subject'     => '',
-            'message'     => '',
-            'headers'     => array(),
-            'attachments' => array(),
-        ));
-
-        $to = self::parse_recipients($atts['to']);
-        if ( empty($to) ) return new WP_Error('ses_to_missing', 'No recipient.');
-
-        $headers = is_array($atts['headers']) ? $atts['headers'] : array_filter(
-            array_map('trim', explode("\n", str_replace("\r", "\n", (string) $atts['headers'])))
-        );
-
-        // Extract tag for logging
-        $tag = '';
-        foreach ($headers as $h) {
-            $line = trim(str_replace(array("\r","\n"), '', (string)$h));
-            if ( stripos($line, 'x-ses-mailer-tag:') === 0 ) {
-                $tag = trim(substr($line, strlen('x-ses-mailer-tag:')));
-                $tag = preg_replace('/[^A-Za-z0-9._-]/', '', $tag);
-                break;
-            }
-        }
-
-        $from_email = isset($this->opts['from_email']) ? trim($this->opts['from_email']) : '';
-        if ( ! is_email($from_email) ) $from_email = get_option('admin_email');
-        $from_name  = isset($this->opts['from_name'])  ? trim($this->opts['from_name'])  : '';
-        if ( $from_name === '' ) $from_name = get_bloginfo('name');
-        if ( ! is_email($from_email) ) return new WP_Error('ses_from_invalid', 'Configured From Email is invalid or missing.');
-
-        $subject = (string) $atts['subject'];
-        $message = (string) $atts['message'];
-        $attachments = (array) $atts['attachments'];
+        $tag = self::extract_tag($mail['headers']);
 
         $rate = isset($this->opts['rate_limit']) ? max(0, intval($this->opts['rate_limit'])) : 10;
         self::throttle($rate);
 
-        $mime = self::build_mime($to, $subject, $message, $headers, $attachments, $from_email, $from_name);
+        $mime = self::build_mime($mail);
         if ( is_wp_error($mime) ) return $mime;
         $send_size = strlen($mime);
         $result = (new SesClient())->send_raw_email($mime);
 
-        $to_header = implode(', ', $to);
+        $to_header = implode(', ', $mail['to']);
+        $subject = $mail['subject'];
 
         if ( $result === true ) {
             $sub_log = mb_substr($subject, 0, 120);
@@ -250,64 +383,38 @@ class Mailer {
     /**
      * Build a complete MIME message using PHPMailer (bundled with WordPress).
      *
-     * @param array  $to          Recipient email addresses.
-     * @param string $subject     Email subject.
-     * @param string $message     Email body (HTML or plain text).
-     * @param array  $headers     Raw header lines from wp_mail().
-     * @param array  $attachments File paths to attach.
-     * @param string $from_email  Sender email address.
-     * @param string $from_name   Sender display name.
+     * @param array $mail Prepared mail: to, subject, message, headers, attachments,
+     *                    embeds, from_email, from_name, content_type, charset.
      * @return string|WP_Error Complete MIME message or error.
      */
-    public static function build_mime($to, $subject, $message, $headers, $attachments, $from_email, $from_name) {
+    public static function build_mime($mail) {
         require_once ABSPATH . WPINC . '/PHPMailer/PHPMailer.php';
         require_once ABSPATH . WPINC . '/PHPMailer/Exception.php';
 
+        $mail = wp_parse_args($mail, array(
+            'to' => array(), 'subject' => '', 'message' => '', 'headers' => array(),
+            'attachments' => array(), 'embeds' => array(), 'from_email' => '', 'from_name' => '',
+            'content_type' => 'text/plain', 'charset' => 'UTF-8',
+        ));
+
         try {
             $phpmailer = new \PHPMailer\PHPMailer\PHPMailer(true);
-            $phpmailer->CharSet = \PHPMailer\PHPMailer\PHPMailer::CHARSET_UTF8;
+            $phpmailer->CharSet = $mail['charset'] !== '' ? $mail['charset'] : 'UTF-8';
             $phpmailer->XMailer = ' ';
 
-            $phpmailer->setFrom($from_email, $from_name);
+            $phpmailer->setFrom($mail['from_email'], $mail['from_name']);
 
-            foreach ((array) $to as $addr) {
-                list($email, $name) = self::split_address(trim((string) $addr));
-                if ( $email !== '' ) {
-                    $phpmailer->addAddress($email, $name);
-                }
+            foreach ( (array) $mail['to'] as $addr ) {
+                self::add_address($phpmailer, 'to', $addr);
+            }
+            if ( empty($phpmailer->getToAddresses()) ) {
+                return new WP_Error('ses_to_missing', 'No valid recipient.');
             }
 
-            $phpmailer->Subject = $subject;
+            $phpmailer->Subject = (string) $mail['subject'];
 
-            // Determine content type from headers and filters
-            $content_type = 'text/plain';
-            foreach ((array) $headers as $hline) {
-                $l = trim((string) $hline);
-                if ( stripos($l, 'content-type:') === 0 ) {
-                    if ( stripos($l, 'text/html') !== false ) {
-                        $content_type = 'text/html';
-                    }
-                    break;
-                }
-            }
-            if ( function_exists('apply_filters') ) {
-                // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- core wp_mail_content_type filter
-                $filtered = apply_filters('wp_mail_content_type', $content_type);
-                if ( is_string($filtered) && stripos($filtered, 'text/html') !== false ) {
-                    $content_type = 'text/html';
-                }
-            }
-
-            // Auto-detect HTML content when Content-Type is not explicitly set.
-            if ( $content_type === 'text/plain' ) {
-                $trimmed = ltrim($message);
-                if ( stripos($trimmed, '<!doctype') === 0 || stripos($trimmed, '<html') === 0 ) {
-                    $content_type = 'text/html';
-                }
-            }
-
-            $is_html = ($content_type === 'text/html');
-            if ( $is_html ) {
+            $message = (string) $mail['message'];
+            if ( $mail['content_type'] === 'text/html' ) {
                 $phpmailer->isHTML(true);
                 $phpmailer->Body    = $message;
                 $phpmailer->AltBody = self::html_to_text($message);
@@ -316,140 +423,151 @@ class Mailer {
                 $phpmailer->Body = $message;
             }
 
-            // Parse headers for Reply-To, CC, BCC, and custom X-* headers
-            foreach ((array) $headers as $hline) {
-                $line = trim(str_replace(array("\r", "\n"), '', (string) $hline));
-                if ( $line === '' ) continue;
+            // Reply-To, CC, BCC, and every other header the caller set (List-Unsubscribe, Precedence, X-*...)
+            foreach ( self::header_lines($mail['headers']) as $line ) {
+                if ( strpos($line, ':') === false ) continue;
+                list($name, $value) = array_map('trim', explode(':', $line, 2));
+                $lname = strtolower($name);
 
-                if ( preg_match('/^(from|to|subject|content-type|mime-version)\s*:/i', $line) ) continue;
-
-                if ( stripos($line, 'reply-to:') === 0 ) {
-                    $value = trim(substr($line, strlen('reply-to:')));
-                    if ( $value !== '' ) {
-                        if ( preg_match('/^(.+)<([^>]+)>$/', $value, $m) ) {
-                            $phpmailer->addReplyTo(trim($m[2]), trim($m[1], " \t\""));
-                        } else {
-                            $phpmailer->addReplyTo($value);
-                        }
+                if ( in_array($lname, array('cc', 'bcc', 'reply-to'), true) ) {
+                    foreach ( explode(',', $value) as $addr ) {
+                        self::add_address($phpmailer, $lname, $addr);
                     }
                     continue;
                 }
+                if ( in_array($lname, self::RESERVED_HEADERS, true) ) continue;
+                if ( ! preg_match('/^[A-Za-z0-9-]+$/', $name) || $value === '' ) continue;
 
-                if ( stripos($line, 'cc:') === 0 ) {
-                    $value = trim(substr($line, strlen('cc:')));
-                    if ( $value !== '' ) {
-                        foreach ( array_map('trim', explode(',', $value)) as $cc_addr ) {
-                            if ( $cc_addr !== '' ) {
-                                if ( preg_match('/^(.+)<([^>]+)>$/', $cc_addr, $m) ) {
-                                    $phpmailer->addCC(trim($m[2]), trim($m[1], " \t\""));
-                                } else {
-                                    $phpmailer->addCC($cc_addr);
-                                }
-                            }
-                        }
-                    }
+                try {
+                    $phpmailer->addCustomHeader($name, $value);
+                } catch ( \PHPMailer\PHPMailer\Exception $e ) {
                     continue;
-                }
-
-                if ( stripos($line, 'bcc:') === 0 ) {
-                    $value = trim(substr($line, strlen('bcc:')));
-                    if ( $value !== '' ) {
-                        foreach ( array_map('trim', explode(',', $value)) as $bcc_addr ) {
-                            if ( $bcc_addr !== '' ) {
-                                if ( preg_match('/^(.+)<([^>]+)>$/', $bcc_addr, $m) ) {
-                                    $phpmailer->addBCC(trim($m[2]), trim($m[1], " \t\""));
-                                } else {
-                                    $phpmailer->addBCC($bcc_addr);
-                                }
-                            }
-                        }
-                    }
-                    continue;
-                }
-
-                if ( stripos($line, 'x-') === 0 ) {
-                    $phpmailer->addCustomHeader($line);
                 }
             }
 
-            // Attachments — strict allowlist: uploads dir and wp-content only
-            $attach_errors = self::attach_files($phpmailer, $attachments);
-            if ( ! empty($attach_errors) ) {
-                LogViewer::log('ATTACH_BLOCKED paths=' . implode(', ', $attach_errors));
+            $blocked = self::attach_files($phpmailer, $mail['attachments']);
+            $blocked = array_merge($blocked, self::embed_files($phpmailer, $mail['embeds']));
+            if ( ! empty($blocked) ) {
+                LogViewer::log('ATTACH_BLOCKED paths=' . implode(', ', $blocked));
+            }
+
+            // Let plugins adjust the message (DKIM, extra headers) like core wp_mail().
+            // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- core hook.
+            do_action_ref_array('phpmailer_init', array(&$phpmailer));
+
+            // An SMTP plugin may have called isSMTP(); PHPMailer then omits the Bcc
+            // header, and SES reads recipients from the headers. Restore it.
+            $phpmailer->Mailer = 'mail';
+            // A hook must not swap in an unverified sender.
+            if ( ! self::from_allowed($phpmailer->From, $mail['from_email']) ) {
+                $phpmailer->setFrom($mail['from_email'], $phpmailer->FromName);
             }
 
             $phpmailer->preSend();
             return $phpmailer->getSentMIMEMessage();
-        } catch (\PHPMailer\PHPMailer\Exception $e) {
+        } catch (\Throwable $e) {
             return new WP_Error('ses_mime_error', 'Failed to build MIME: ' . $e->getMessage());
         }
     }
 
     /**
-     * Attach files with strict path validation.
+     * Add one address; an invalid address is skipped (like core) instead of failing the message.
+     */
+    private static function add_address($phpmailer, $type, $raw) {
+        $raw = trim((string) $raw);
+        if ( $raw === '' ) return;
+        list($email, $name) = self::split_address($raw);
+        try {
+            switch ( $type ) {
+                case 'cc':       $phpmailer->addCC($email, $name); break;
+                case 'bcc':      $phpmailer->addBCC($email, $name); break;
+                case 'reply-to': $phpmailer->addReplyTo($email, $name); break;
+                default:         $phpmailer->addAddress($email, $name); break;
+            }
+        } catch ( \PHPMailer\PHPMailer\Exception $e ) {
+            return;
+        }
+    }
+
+    /**
+     * Resolve a path and check it is a readable file inside an allowed root
+     * (uploads, wp-content, or the system temp dir). realpath() resolves
+     * symlinks, so a link pointing outside these roots is rejected.
      *
-     * Only allows files inside the uploads directory or wp-content.
-     * Rejects symlink escapes by comparing realpath against allowed roots.
+     * @return string|false Real path, or false if not allowed.
+     */
+    public static function allowed_path($path) {
+        $path = trim((string) $path);
+        if ( $path === '' ) return false;
+
+        $roots = array();
+        $uploads = wp_get_upload_dir();
+        if ( ! empty($uploads['basedir']) ) $roots[] = (string) $uploads['basedir'];
+        if ( defined('WP_CONTENT_DIR') ) $roots[] = (string) WP_CONTENT_DIR;
+        $roots[] = function_exists('get_temp_dir') ? get_temp_dir() : sys_get_temp_dir();
+        $prefixes = array();
+        foreach ( $roots as $root ) {
+            $root_real = realpath($root);
+            if ( $root_real !== false ) $prefixes[] = rtrim($root_real, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
+        }
+
+        $real = realpath($path);
+        if ( $real === false || ! is_file($real) || ! is_readable($real) ) return false;
+        foreach ( $prefixes as $prefix ) {
+            if ( strpos($real, $prefix) === 0 ) return $real;
+        }
+        return false;
+    }
+
+    /**
+     * Attach files with strict path validation (see allowed_path()).
      *
      * @return array List of blocked path strings (empty if all OK).
      */
     public static function attach_files($phpmailer, $attachments) {
-        $uploads_dir = wp_get_upload_dir();
-        $uploads_base = isset($uploads_dir['basedir']) ? (string) $uploads_dir['basedir'] : '';
-        $content_base = defined('WP_CONTENT_DIR') ? (string) WP_CONTENT_DIR : '';
-        $cache_key = $uploads_base . '|' . $content_base;
-
-        static $allowed_cache = array();
-        if ( ! isset($allowed_cache[$cache_key]) ) {
-            $allowed_bases = array();
-            if ( $uploads_base !== '' ) {
-                $real = realpath($uploads_base);
-                if ( $real !== false ) $allowed_bases[] = $real;
-            }
-            if ( $content_base !== '' ) {
-                $real = realpath($content_base);
-                if ( $real !== false ) $allowed_bases[] = $real;
-            }
-            $allowed_bases = array_values(array_unique($allowed_bases));
-            $allowed_prefixes = array();
-            foreach ( $allowed_bases as $base ) {
-                $allowed_prefixes[] = $base . DIRECTORY_SEPARATOR;
-            }
-            $allowed_cache[$cache_key] = array(
-                'bases'    => $allowed_bases,
-                'prefixes' => $allowed_prefixes,
-            );
-        }
-        $allowed_prefixes = $allowed_cache[$cache_key]['prefixes'];
-
         $blocked = array();
-        foreach ((array) $attachments as $path) {
-            $path = (string) $path;
-            if ( $path === '' ) continue;
-
-            $real = realpath($path);
-
-            // Reject if realpath fails (broken symlink, non-existent)
-            if ( $real === false || ! is_file($real) || ! is_readable($real) ) {
-                $blocked[] = $path;
+        foreach ( self::normalize_files($attachments) as $file ) {
+            $real = self::allowed_path($file['path']);
+            if ( $real === false ) {
+                $blocked[] = $file['path'];
                 continue;
             }
-
-            // Reject symlink escapes: if the given path contains a symlink
-            // that resolves outside allowed roots, realpath will reveal it
-            $allowed = false;
-            foreach ( $allowed_prefixes as $prefix ) {
-                if ( strpos($real, $prefix) === 0 ) {
-                    $allowed = true;
-                    break;
-                }
+            try {
+                $phpmailer->addAttachment($real, $file['name']);
+            } catch ( \PHPMailer\PHPMailer\Exception $e ) {
+                $blocked[] = $file['path'];
             }
-            if ( ! $allowed ) {
-                $blocked[] = $path;
+        }
+        return $blocked;
+    }
+
+    /**
+     * Embed inline images (wp_mail() $embeds, WP 6.9+). The name is the Content-ID.
+     *
+     * @return array List of blocked path strings.
+     */
+    public static function embed_files($phpmailer, $embeds) {
+        $blocked = array();
+        foreach ( self::normalize_files($embeds) as $i => $file ) {
+            $real = self::allowed_path($file['path']);
+            if ( $real === false ) {
+                $blocked[] = $file['path'];
                 continue;
             }
-
-            $phpmailer->addAttachment($real);
+            // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- core filter.
+            $args = apply_filters('wp_mail_embed_args', array(
+                'path'        => $real,
+                'cid'         => $file['name'] !== '' ? $file['name'] : (string) $i,
+                'name'        => basename($file['path']),
+                'encoding'    => 'base64',
+                'type'        => '',
+                'disposition' => 'inline',
+            ));
+            try {
+                $phpmailer->addEmbeddedImage($args['path'], $args['cid'], $args['name'], $args['encoding'], $args['type'], $args['disposition']);
+            } catch ( \PHPMailer\PHPMailer\Exception $e ) {
+                $blocked[] = $file['path'];
+            }
         }
         return $blocked;
     }

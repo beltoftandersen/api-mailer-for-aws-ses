@@ -1,8 +1,8 @@
 msgid ""
 msgstr ""
-"Project-Id-Version: API Mailer for AWS SES 1.0.1\n"
-"Report-Msgid-Bugs-To: https://github.com/YOUR_ORG/api-mailer-for-aws-ses/issues\n"
-"POT-Creation-Date: 2025-09-12 00:00+0000\n"
+"Project-Id-Version: API Mailer for AWS SES 1.5\n"
+"Report-Msgid-Bugs-To: https://wordpress.org/support/plugin/api-mailer-for-aws-ses\n"
+"POT-Creation-Date: 2026-10-07T04:25:20+00:00\n"
 "PO-Revision-Date: 2025-09-12 00:00+0000\n"
 "Last-Translator: \n"
 "Language-Team: Danish\n"
@@ -12,198 +12,257 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "X-Domain: api-mailer-for-aws-ses\n"
 
-#: ses-mailer.php
-msgid "Settings"
-msgstr "Indstillinger"
-
-#: src/Admin/AdminPage.php
+#. Plugin Name of the plugin
+#: ses-mailer.php src/Admin/AdminPage.php:21 src/Admin/AdminPage.php:22
+#: src/Admin/AdminPage.php:79
 msgid "API Mailer for AWS SES"
 msgstr "WP API Mailer til AWS SES"
 
-#: src/Admin/AdminPage.php
+#. Description of the plugin
+#: ses-mailer.php
+msgid "Fast, lightweight WordPress mailer that sends via Amazon SES SendRawEmail API (no SMTP). Includes background queue, logging, and wp-config credentials."
+msgstr "Hurtig, letvægts WordPress-mailer, der sender via Amazon SES SendRawEmail API (ingen SMTP). Inkluderer baggrundskø, logning og wp-config-legitimationsoplysninger."
+
+#. Author of the plugin
+#: ses-mailer.php
+msgid "beltoft.net"
+msgstr "beltoft.net"
+
+#. Author URI of the plugin
+#: ses-mailer.php
+msgid "https://beltoft.net"
+msgstr "https://beltoft.net"
+
+#: ses-mailer.php:51 src/Admin/AdminPage.php:84
+msgid "Settings"
+msgstr "Indstillinger"
+
+#: src/Admin/AdminPage.php:43
 msgid "Amazon SES API Settings"
 msgstr "Amazon SES API indstillinger"
 
-#: src/Admin/AdminPage.php
+#: src/Admin/AdminPage.php:45
 msgid "This plugin sends email via Amazon SES API. SMTP is not used."
 msgstr "Dette plugin sender e-mail via Amazon SES API. SMTP bruges ikke."
 
-#: src/Admin/AdminPage.php
+#: src/Admin/AdminPage.php:50
 msgid "Enable Mailer (use SES API)"
 msgstr "Aktivér mailer (brug SES API)"
 
-#: src/Admin/AdminPage.php
+#: src/Admin/AdminPage.php:51
 msgid "Access Key ID"
 msgstr "Adgangsnøgle-ID"
 
-#: src/Admin/AdminPage.php
+#: src/Admin/AdminPage.php:51
 msgid "Your AWS Access Key ID"
 msgstr "Din AWS adgangsnøgle-ID"
 
-#: src/Admin/AdminPage.php
+#: src/Admin/AdminPage.php:52
 msgid "Secret Access Key"
 msgstr "Hemmelig adgangsnøgle"
 
-#: src/Admin/AdminPage.php
+#: src/Admin/AdminPage.php:53 src/Admin/AdminPage.php:187
 msgid "Region"
 msgstr "Region"
 
-#: src/Admin/AdminPage.php
+#: src/Admin/AdminPage.php:54
 msgid "From Email (verified in SES)"
 msgstr "Fra e-mail (verificeret i SES)"
 
-#: src/Admin/AdminPage.php
+#: src/Admin/AdminPage.php:55
 msgid "From Name"
 msgstr "Afsendernavn"
 
-#: src/Admin/AdminPage.php
+#: src/Admin/AdminPage.php:56
 msgid "Reply-To Email"
 msgstr "Svar-til e-mail"
 
-#: src/Admin/AdminPage.php
+#: src/Admin/AdminPage.php:57
 msgid "Force From on all emails"
 msgstr "Gennemtving afsender på alle e-mails"
 
-#: src/Admin/AdminPage.php
+#: src/Admin/AdminPage.php:58
 msgid "Rate Limit (per second)"
 msgstr "Hastighedsgrænse (pr. sekund)"
 
-#: src/Admin/AdminPage.php
+#: src/Admin/AdminPage.php:59
 msgid "Custom Headers (X-*, one per line)"
 msgstr "Brugerdefinerede headers (X-*, én pr. linje)"
 
-#: src/Admin/AdminPage.php
-msgid "Disable logging in production"
-msgstr "Deaktiver logning i produktion"
+#: src/Admin/AdminPage.php:61
+msgid "When enabled, logs appear in WooCommerce -> Status -> Logs (source: api-mailer-for-aws-ses)."
+msgstr "Når aktiveret, vises logs i WooCommerce -> Status -> Logs (kilde: api-mailer-for-aws-ses)."
 
-#: src/Admin/AdminPage.php
+#: src/Admin/AdminPage.php:62
+msgid "When enabled, logs are written to the PHP error log (typically wp-content/debug.log)."
+msgstr "Når aktiveret, skrives logs til PHP-fejlloggen (typisk wp-content/debug.log)."
+
+#: src/Admin/AdminPage.php:63
+msgid "Disable logging"
+msgstr "Deaktiver logning"
+
+#: src/Admin/AdminPage.php:64
 msgid "Send emails in background (queue)"
 msgstr "Send e-mails i baggrunden (kø)"
 
-#: src/Admin/AdminPage.php
+#: src/Admin/AdminPage.php:65
 msgid "Clean up plugin data on deletion"
 msgstr "Ryd plugin-data ved sletning"
 
-#: src/Admin/AdminPage.php
+#: src/Admin/AdminPage.php:66
 msgid "Read AWS credentials from wp-config"
 msgstr "Læs AWS legitimationsoplysninger fra wp-config"
 
-#: src/Admin/AdminPage.php
+#: src/Admin/AdminPage.php:73
+msgid "You do not have sufficient permissions to access this page."
+msgstr "Du har ikke tilstrækkelige rettigheder til at tilgå denne side."
+
+#: src/Admin/AdminPage.php:88
+msgid "Test"
+msgstr "Test"
+
+#: src/Admin/AdminPage.php:92
+msgid "Status"
+msgstr "Status"
+
+#: src/Admin/AdminPage.php:108
 msgid "Save Settings"
 msgstr "Gem indstillinger"
 
-#: src/Admin/AdminPage.php
-msgid "An error occurred while sending. See Logs."
-msgstr "Der opstod en fejl under afsendelse. Se Logs."
+#: src/Admin/AdminPage.php:118
+msgid "An error occurred while sending. Check logs for details."
+msgstr "Der opstod en fejl under afsendelsen. Se logs for detaljer."
 
-#: src/Admin/AdminPage.php
+#: src/Admin/AdminPage.php:119
 msgid "Failed to send test email:"
 msgstr "Kunne ikke sende test-e-mail:"
 
-#: src/Admin/AdminPage.php
+#: src/Admin/AdminPage.php:123
 msgid "Test email queued. It will be sent in the background."
 msgstr "Test-e-mail sat i kø. Den sendes i baggrunden."
 
-#: src/Admin/AdminPage.php
+#: src/Admin/AdminPage.php:125
 msgid "Test email sent!"
 msgstr "Test-e-mail sendt!"
 
-#: src/Admin/AdminPage.php
-msgid "Failed to send test email. Check Logs tab for details."
-msgstr "Kunne ikke sende test-e-mail. Se Logs-fanen for detaljer."
+#: src/Admin/AdminPage.php:128
+msgid "Failed to send test email. Check logs for details."
+msgstr "Testmailen kunne ikke sendes. Se logs for detaljer."
 
-#: src/Admin/AdminPage.php
+#: src/Admin/AdminPage.php:133
 msgid "Send a test email to:"
 msgstr "Send en test-e-mail til:"
 
-#: src/Admin/AdminPage.php
+#: src/Admin/AdminPage.php:135
 msgid "Send Test"
 msgstr "Send test"
 
-#: src/Admin/AdminPage.php
-msgid "Could not connect to SES. See Logs."
-msgstr "Kunne ikke forbinde til SES. Se Logs."
+#: src/Admin/AdminPage.php:145
+msgid "Could not connect to SES. Check logs for details."
+msgstr "Kunne ikke forbinde til SES. Se logs for detaljer."
 
-#: src/Admin/AdminPage.php
+#: src/Admin/AdminPage.php:146
 msgid "SES Connection Failed:"
 msgstr "SES-forbindelse mislykkedes:"
 
-#: src/Admin/AdminPage.php
+#: src/Admin/AdminPage.php:155
 msgid "SES Connection Successful"
 msgstr "SES-forbindelse oprettet"
 
-#: src/Admin/AdminPage.php
+#: src/Admin/AdminPage.php:165
 msgid "Configuration Status"
 msgstr "Konfigurationsstatus"
 
-#: src/Admin/AdminPage.php
+#: src/Admin/AdminPage.php:175
 msgid "Access Key (wp-config/env)"
 msgstr "Adgangsnøgle (wp-config/env)"
 
-#: src/Admin/AdminPage.php
+#: src/Admin/AdminPage.php:176
 msgid "Secret Key (wp-config/env)"
 msgstr "Hemmelig nøgle (wp-config/env)"
 
-#: src/Admin/AdminPage.php
+#: src/Admin/AdminPage.php:177
 msgid "Region (wp-config/env)"
 msgstr "Region (wp-config/env)"
 
-#: src/Admin/AdminPage.php
+#: src/Admin/AdminPage.php:179
 msgid "Access Key"
 msgstr "Adgangsnøgle"
 
-#: src/Admin/AdminPage.php
+#: src/Admin/AdminPage.php:181 src/Admin/AdminPage.php:185
 msgid "Secret Key"
 msgstr "Hemmelig nøgle"
 
-#: src/Admin/AdminPage.php
+#: src/Admin/AdminPage.php:183
+msgid "Secret Key cannot be decrypted (WordPress salts may have changed). Please re-enter it."
+msgstr "Secret Key kan ikke dekrypteres (WordPress-salts kan være ændret). Indtast den igen."
+
+#: src/Admin/AdminPage.php:190
 msgid "From Email"
 msgstr "Fra e-mail"
 
-#: src/Admin/AdminPage.php
+#: src/Admin/AdminPage.php:194 src/Admin/AdminPage.php:196
 msgid "Background Sending"
 msgstr "Baggrundsafsendelse"
 
-#: src/Admin/AdminPage.php
+#: src/Admin/AdminPage.php:199
 msgid "Logging is disabled"
 msgstr "Logning er deaktiveret"
 
-#: src/Admin/AdminPage.php
+#: src/Admin/AdminPage.php:205
 msgid "Test SES Connection"
 msgstr "Test SES-forbindelse"
 
-#: src/Admin/AdminPage.php
+#: src/Admin/AdminPage.php:210
 msgid "Max 24 Hour Send"
 msgstr "Maks. 24-timers afsendelser"
 
-#: src/Admin/AdminPage.php
+#: src/Admin/AdminPage.php:211
 msgid "Max Send Rate (per sec)"
 msgstr "Maks. afsendelseshastighed (pr. sek.)"
 
-#: src/Admin/AdminPage.php
+#: src/Admin/AdminPage.php:212
 msgid "Sent Last 24 Hours"
 msgstr "Sendt de sidste 24 timer"
 
-#: src/Logging/LogViewer.php
+#: src/Admin/AdminPage.php:237 src/Admin/AdminPage.php:250
+msgid "Using credentials from wp-config."
+msgstr "Bruger legitimationsoplysninger fra wp-config."
+
+#: src/Admin/AdminPage.php:248
+msgid "Your AWS Secret Access Key"
+msgstr "Din AWS Secret Access Key"
+
+#: src/Admin/AdminPage.php:252
+msgid "A secret is stored. Leave as •••• to keep, clear to remove."
+msgstr "En nøgle er gemt. Lad •••• stå for at beholde den, ryd feltet for at fjerne den."
+
+#: src/Admin/AdminPage.php:252
+msgid "No secret stored yet."
+msgstr "Ingen nøgle gemt endnu."
+
+#: src/Admin/AdminPage.php:286
+msgid "Select a region…"
+msgstr "Vælg en region…"
+
+#: src/Admin/AdminPage.php:294
+msgid "Using region from wp-config."
+msgstr "Bruger region fra wp-config."
+
+#: src/Logging/LogViewer.php:37
 msgid "Email Logs"
 msgstr "E-mail-logs"
 
-#: src/Logging/LogViewer.php
-msgid "Logging is disabled by settings. No new entries will be recorded."
-msgstr "Logning er deaktiveret i indstillingerne. Ingen nye poster gemmes."
+#: src/Logging/LogViewer.php:40
+msgid "Logging is disabled. Enable it in Settings to record email activity."
+msgstr "Logning er deaktiveret. Aktiver det under Indstillinger for at registrere e-mailaktivitet."
 
-#: src/Logging/LogViewer.php
-msgid "Logs cleared."
-msgstr "Logs ryddet."
+#. translators: %s: URL to WooCommerce logs
+#: src/Logging/LogViewer.php:49
+#, php-format
+msgid "Logs are written to <a href=\"%s\">WooCommerce &rarr; Status &rarr; Logs</a> under source <code>api-mailer-for-aws-ses</code>."
+msgstr "Logs skrives til <a href=\"%s\">WooCommerce &rarr; Status &rarr; Logs</a> under kilden <code>api-mailer-for-aws-ses</code>."
 
-#: src/Logging/LogViewer.php
-msgid "No log entries yet."
-msgstr "Ingen logposter endnu."
-
-#: src/Logging/LogViewer.php
-msgid "Log file not found."
-msgstr "Logfil ikke fundet."
-
-#: src/Logging/LogViewer.php
-msgid "Clear Logs"
-msgstr "Ryd logs"
+#: src/Logging/LogViewer.php:55
+msgid "WooCommerce is not active. Logs are written to the PHP error log (typically wp-content/debug.log)."
+msgstr "WooCommerce er ikke aktiv. Logs skrives til PHP-fejlloggen (typisk wp-content/debug.log)."

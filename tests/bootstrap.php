@@ -19,6 +19,9 @@ if ( ! defined('WP_CONTENT_DIR') ) {
 if ( ! defined('DAY_IN_SECONDS') ) {
     define('DAY_IN_SECONDS', 86400);
 }
+if ( ! defined('HOUR_IN_SECONDS') ) {
+    define('HOUR_IN_SECONDS', 3600);
+}
 
 // Stub global state for WordPress functions
 global $_ses_test_options, $_ses_test_transients, $_ses_test_scheduled, $_ses_test_error_log;
@@ -104,6 +107,10 @@ function wp_parse_args($args, $defaults = array()) {
     return array_merge($defaults, $args);
 }
 function apply_filters($tag, $value) { return $value; }
+function do_action_ref_array($tag, $args) {}
+function get_temp_dir() { $d = sys_get_temp_dir() . '/wp-test-tmp/'; if ( ! is_dir($d) ) @mkdir($d, 0755, true); return $d; }
+function sanitize_file_name($name) { return preg_replace('/[^A-Za-z0-9._-]/', '', $name); }
+function wp_delete_file($file) { @unlink($file); }
 function maybe_unserialize($data) {
     if ( is_serialized($data) ) return @unserialize($data);
     return $data;

@@ -29,21 +29,72 @@ class Options {
         return self::$defaults_cache;
     }
 
+    /**
+     * Encrypt the secret key at rest: AES-256-CBC with a random IV and an
+     * HMAC-SHA256 tag, keys derived from the WordPress auth salt (HKDF).
+     * Format: "enc2:" . hex(iv . mac . ciphertext).
+     */
     public static function encrypt_secret($value) {
         if ( $value === '' || ! function_exists('openssl_encrypt') ) return $value;
-        $key = wp_salt('auth');
-        $iv  = substr(md5(wp_salt('secure_auth')), 0, 16);
-        $encrypted = openssl_encrypt($value, 'aes-256-cbc', $key, 0, $iv);
-        return $encrypted !== false ? 'enc:' . $encrypted : $value;
+        list($enc_key, $mac_key) = self::secret_keys();
+        $iv = random_bytes(16);
+        $cipher = openssl_encrypt($value, 'aes-256-cbc', $enc_key, OPENSSL_RAW_DATA, $iv);
+        if ( $cipher === false ) return $value;
+        $mac = hash_hmac('sha256', $iv . $cipher, $mac_key, true);
+        return 'enc2:' . bin2hex($iv . $mac . $cipher);
     }
 
+    /**
+     * @return string Plain secret, or '' if it cannot be decrypted (e.g. salts changed).
+     */
     public static function decrypt_secret($value) {
-        if ( $value === '' || strpos($value, 'enc:') !== 0 ) return $value;
+        $value = (string) $value;
+        if ( $value === '' || ! self::is_encrypted($value) ) return $value;
         if ( ! function_exists('openssl_decrypt') ) return '';
+
+        if ( strpos($value, 'enc2:') === 0 ) {
+            $raw = @hex2bin(substr($value, 5));
+            if ( $raw === false || strlen($raw) < 64 ) return '';
+            list($enc_key, $mac_key) = self::secret_keys();
+            $iv     = substr($raw, 0, 16);
+            $mac    = substr($raw, 16, 32);
+            $cipher = substr($raw, 48);
+            if ( ! hash_equals(hash_hmac('sha256', $iv . $cipher, $mac_key, true), $mac) ) return '';
+            $plain = openssl_decrypt($cipher, 'aes-256-cbc', $enc_key, OPENSSL_RAW_DATA, $iv);
+            return $plain !== false ? $plain : '';
+        }
+
+        // Legacy "enc:" format (1.4.x): fixed IV derived from the secure_auth salt.
         $key = wp_salt('auth');
         $iv  = substr(md5(wp_salt('secure_auth')), 0, 16);
-        $decrypted = openssl_decrypt(substr($value, 4), 'aes-256-cbc', $key, 0, $iv);
-        return $decrypted !== false ? $decrypted : '';
+        $plain = openssl_decrypt(substr($value, 4), 'aes-256-cbc', $key, 0, $iv);
+        return $plain !== false ? $plain : '';
+    }
+
+    public static function is_encrypted($value) {
+        return strpos((string) $value, 'enc:') === 0 || strpos((string) $value, 'enc2:') === 0;
+    }
+
+    private static function secret_keys() {
+        $salt = wp_salt('auth');
+        return array(
+            hash_hkdf('sha256', $salt, 32, 'ses-mailer-enc'),
+            hash_hkdf('sha256', $salt, 32, 'ses-mailer-mac'),
+        );
+    }
+
+    /**
+     * Encrypt a secret stored in plain text or the legacy "enc:" format with the current scheme.
+     */
+    public static function maybe_upgrade_secret() {
+        $opts = get_option(self::OPTION);
+        if ( ! is_array($opts) || empty($opts['secret_key']) || strpos($opts['secret_key'], 'enc2:') === 0 ) return;
+        $plain = self::decrypt_secret($opts['secret_key']);
+        if ( $plain === '' ) return;
+        $encrypted = self::encrypt_secret($plain);
+        if ( strpos($encrypted, 'enc2:') !== 0 ) return; // openssl unavailable
+        $opts['secret_key'] = $encrypted;
+        update_option(self::OPTION, $opts);
     }
 
     public static function constants_in_use() {
@@ -100,6 +151,11 @@ class Options {
                         if ( $has ) {
                             $raw = (string) $val;
                             if ( $raw === $secret_mask ) { $out[$key] = isset($prev[$key]) ? (string) $prev[$key] : ''; }
+                            elseif ( self::is_encrypted($raw) ) {
+                                // Already-encrypted value (e.g. update_option() with stored options): don't encrypt twice.
+                                $plain = self::decrypt_secret($raw);
+                                $out[$key] = $plain !== '' ? self::encrypt_secret($plain) : $raw;
+                            }
                             else {
                                 $clean = sanitize_text_field($raw);
                                 $clean = preg_replace('/\s+/', '', $clean);

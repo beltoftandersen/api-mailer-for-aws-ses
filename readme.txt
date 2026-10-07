@@ -1,10 +1,10 @@
 === API Mailer for AWS SES ===
 Contributors: beltoftnet
 Tags: ses, email, aws, api, mailer
-Requires at least: 5.6
+Requires at least: 5.7
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.4.2
+Stable tag: 1.5
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -12,7 +12,7 @@ Amazon SES API mailer for WordPress that bypasses SMTP and sends via the SES Sen
 
 == Description ==
 
-API Mailer for AWS SES replaces `wp_mail()` with a direct Amazon SES API integration (SendRawEmail). There is no SMTP layer or PHPMailer handoff in the critical path, reducing overhead and improving reliability.
+API Mailer for AWS SES replaces `wp_mail()` with a direct Amazon SES API integration (SendRawEmail). There is no SMTP layer: PHPMailer only builds the message, which is then sent straight to the SES API.
 
 The plugin focuses on correctness, performance, and operational clarity:
 - Direct AWS SigV4 signed requests to SES
@@ -26,7 +26,7 @@ The plugin focuses on correctness, performance, and operational clarity:
 2. Background sending queue with Action Scheduler or wp_cron fallback.
 3. Tiny-args queueing with job IDs to keep cron payloads small and private.
 4. Configurable rate limiting per second to stay under SES send rate.
-5. From/Reply-To handling with optional forced From and custom X-* headers.
+5. wp_mail() compatible: all headers (incl. List-Unsubscribe), attachments, inline images, phpmailer_init.
 6. Test tab to send a test email and a Status tab to fetch SES GetSendQuota.
 7. Logging via WooCommerce logger or PHP error_log, disabled by default.
 8. Credentials from wp-config (constants) or saved settings.
@@ -108,6 +108,13 @@ A: Yes. Use the wp-config constants and enable “Read AWS credentials from wp-c
 API Mailer for AWS SES is built and maintained by [beltoft.net](https://beltoft.net).
 
 == Changelog ==
+= 1.5 =
+- Respect plugins that block emails.
+- Keep List-Unsubscribe and other custom headers.
+- Support inline images, named attachments and phpmailer_init.
+- Other From addresses now go to Reply-To.
+- Background queue keeps attachments and content type.
+- Stronger secret key encryption. Re-enter the key if you downgrade.
 = 1.4.2 =
 - Tested with WordPress 7.1.
 - Fix: failed sends now return false and fire `wp_mail_failed`; successful sends fire `wp_mail_succeeded`.
@@ -145,6 +152,8 @@ Initial public release.
 - wp-config credential mode
 
 == Upgrade Notice ==
+= 1.5 =
+Better wp_mail() compatibility and stronger secret key encryption.
 = 1.4.2 =
 Fixes failed sends being reported as successful and "Name <email>" recipients. Tested with WordPress 7.1.
 = 1.4 =
